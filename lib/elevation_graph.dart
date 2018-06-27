@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
 import 'package:elevation_graph/elevation_point.dart';
 
 class ElevationGraphView extends StatefulWidget {
@@ -14,6 +15,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     return Container(
       width: double.infinity,
       height: double.infinity,
+      padding: EdgeInsets.only(bottom: 100.0),
       child: CustomPaint(
         painter: ElevationPainter(getElevationPointList()),
       ),
@@ -21,13 +23,19 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   }
 }
 
+const int AXIS_TEXT_MARGIN = 8;
+const double DOTTED_LINE_WIDTH = 2.0;
+const double DOTTED_LINE_INTERVAL = 2.0;
+
 class ElevationPainter extends CustomPainter {
   List<ElevationPoint> elevationPointList;
 
   Paint mLinePaint = Paint()
     ..color = Colors.blueAccent
-    ..strokeWidth = 1.0
+    ..strokeWidth = 2.0
     ..style = PaintingStyle.stroke;
+
+  Paint mGradualPaint = Paint()..style = PaintingStyle.fill;
 
   Paint mLevelLinePaint = Paint()
     ..color = Colors.amber
@@ -40,38 +48,44 @@ class ElevationPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    drawAxis(canvas, size);
-
     drawLines(size, canvas);
+
+    drawVerticalAxis(canvas, size);
   }
 
+  /// =========== 绘制纵轴部分
+
   /// 绘制背景数轴
-  void drawAxis(Canvas canvas, Size size) {
+  void drawVerticalAxis(Canvas canvas, Size size) {
+    var availableHeight = size.height;
+    var interval = availableHeight / 9.0;
+
     canvas.save();
-    canvas.drawPath(dottedLine(330.0, 100.0, 2.0, 2.0), mLevelLinePaint);
-    generateLevelText("7000")
-      ..layout()
-      ..paint(canvas, Offset(330.0, 95.0));
-    canvas.drawPath(dottedLine(330.0, 200.0, 2.0, 2.0), mLevelLinePaint);
-    generateLevelText("6000")
-      ..layout()
-      ..paint(canvas, Offset(330.0, 195.0));
-    canvas.drawPath(dottedLine(330.0, 300.0, 2.0, 2.0), mLevelLinePaint);
-    generateLevelText("5000")
-      ..layout()
-      ..paint(canvas, Offset(330.0, 295.0));
-    canvas.drawPath(dottedLine(330.0, 400.0, 2.0, 2.0), mLevelLinePaint);
-    generateLevelText("4000")
-      ..layout()
-      ..paint(canvas, Offset(330.0, 395.0));
-    canvas.drawPath(dottedLine(330.0, 500.0, 2.0, 2.0), mLevelLinePaint);
-    generateLevelText("3000")
-      ..layout()
-      ..paint(canvas, Offset(330.0, 495.0));
+    for (int i = 1; i < 10; i++) {
+      var textPre = 10 - i;
+      drawVerticalAxisLine(canvas, size, "${textPre}000", i * interval);
+    }
     canvas.restore();
   }
 
-  Path dottedLine(double width, double y, double cutWidth, double interval) {
+  /// 绘制数轴的一行
+  void drawVerticalAxisLine(Canvas canvas, Size size, String text, double height) {
+    var tp = newVerticalAxisTextPainter(text)..layout();
+
+    // 绘制虚线
+    // 虚线的宽度 = 可用宽度 - 文字宽度 - 文字宽度的左右边距
+    var dottedLineWidth = size.width - tp.width - AXIS_TEXT_MARGIN * 2;
+    canvas.drawPath(newDottedLine(dottedLineWidth, height, DOTTED_LINE_WIDTH, DOTTED_LINE_INTERVAL),
+        mLevelLinePaint);
+
+    // 绘制虚线右边的Text
+    // Text的绘制起始点 = 可用宽度 - 文字宽度 - 左边距
+    var textLeft = size.width - tp.width - AXIS_TEXT_MARGIN;
+    tp.paint(canvas, Offset(textLeft, height - tp.height / 2));
+  }
+
+  // 生成虚线的Path
+  Path newDottedLine(double width, double y, double cutWidth, double interval) {
     var path = Path();
     var d = width / (cutWidth + interval);
     path.moveTo(0.0, y);
@@ -82,7 +96,8 @@ class ElevationPainter extends CustomPainter {
     return path;
   }
 
-  TextPainter generateLevelText(String text) {
+  // 生成纵轴文字的TextPainter
+  TextPainter newVerticalAxisTextPainter(String text) {
     return TextPainter(
       textAlign: TextAlign.left,
       textDirection: TextDirection.ltr,
@@ -95,6 +110,8 @@ class ElevationPainter extends CustomPainter {
       ),
     );
   }
+
+  /// =========== 绘制海拔图连线部分
 
   /// 绘制海拔图连线部分
   void drawLines(Size size, Canvas canvas) {
@@ -110,6 +127,17 @@ class ElevationPainter extends CustomPainter {
 
     canvas.save();
     canvas.drawPath(path, mLinePaint);
+    canvas.restore();
+
+    // 绘制线条下面的渐变部分
+    path.lineTo(size.width, size.height);
+    path.lineTo(0.0, size.height);
+
+    mGradualPaint.shader = ui.Gradient.linear(
+        Offset(0.0, 300.0), Offset(0.0, size.height), [Colors.lightBlue, Colors.greenAccent]);
+
+    canvas.save();
+    canvas.drawPath(path, mGradualPaint);
     canvas.restore();
   }
 
