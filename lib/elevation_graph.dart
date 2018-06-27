@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:elevation_graph/elevation_point.dart';
@@ -27,6 +29,14 @@ const int AXIS_TEXT_MARGIN = 8;
 const double DOTTED_LINE_WIDTH = 2.0;
 const double DOTTED_LINE_INTERVAL = 2.0;
 
+const List<Color> signPointColors = [
+  Colors.pink,
+  Colors.teal,
+  Colors.blueGrey,
+  Colors.amber,
+  Colors.deepOrange
+];
+
 class ElevationPainter extends CustomPainter {
   List<ElevationPoint> elevationPointList;
 
@@ -34,6 +44,8 @@ class ElevationPainter extends CustomPainter {
     ..color = Colors.blueAccent
     ..strokeWidth = 2.0
     ..style = PaintingStyle.stroke;
+
+  Paint mSignPointPaint = Paint()..color = Colors.pink;
 
   Paint mGradualPaint = Paint()..style = PaintingStyle.fill;
 
@@ -138,6 +150,64 @@ class ElevationPainter extends CustomPainter {
 
     canvas.save();
     canvas.drawPath(path, mGradualPaint);
+    canvas.restore();
+
+    canvas.save();
+    int i = Random().nextInt(signPointColors.length);
+    for (var p in elevationPointList) {
+      if (p.name == null || p.name.isEmpty) continue;
+      if (p.name.contains('_')) continue;
+
+      // 向String插入换行符使文字竖向绘制
+      // TODO 这种写法应该是不正确的, 暂时不知道更好的作
+      var splitMapJoin = p.name.splitMapJoin('', onNonMatch: (m) {
+        if (m.isNotEmpty)
+          return '$m\n';
+        else
+          return '';
+      });
+      splitMapJoin = splitMapJoin.substring(0, splitMapJoin.length - 1);
+
+      var tp = TextPainter(
+        textAlign: TextAlign.left,
+        textDirection: TextDirection.ltr,
+        text: TextSpan(
+          text: splitMapJoin,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 11.0,
+          ),
+        ),
+      )..layout();
+
+      // 绘制关键点
+      mSignPointPaint.color = signPointColors[i++ % signPointColors.length];
+      canvas.drawCircle(Offset(p.point.dx * ratioX, p.point.dy * ratioY), 3.0, mSignPointPaint);
+
+      // 默认将文字绘制的起始点设为文字的宽度的中部, 但是如果文字超出了边界, 将其限制在边界内
+      var left = p.point.dx * ratioX - tp.width / 2;
+      if (left < 0) {
+        left = 0.0;
+      } else if (left + tp.width > size.width) {
+        left = size.width - tp.width;
+      }
+
+      // 绘制文字的背景框
+      canvas.drawRRect(
+          RRect.fromLTRBXY(
+            left - 2,
+            p.point.dy * ratioY - tp.height -8,
+            left + tp.width + 2,
+            p.point.dy * ratioY - 4,
+            6.0,
+            6.0,
+          ),
+          mSignPointPaint);
+
+      // 绘制文字
+      tp.paint(canvas, Offset(left, p.point.dy * ratioY - tp.height -6));
+    }
+
     canvas.restore();
   }
 
