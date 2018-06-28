@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,8 @@ class ElevationPoint {
   String category;
 
   Offset point;
+
+  Color color;
 }
 
 String pointJson =
@@ -29,6 +32,14 @@ String pointJson =
 //  return list;
 //}
 
+const List<Color> _signPointColors = [
+  Colors.pink,
+  Colors.teal,
+  Colors.blueGrey,
+  Colors.amber,
+  Colors.deepOrange
+];
+
 Future<List<ElevationPoint>> getElevationPointList() {
   return rootBundle
       .loadString("assets/raw/CHUANZANGNAN.json", cache: false)
@@ -40,6 +51,7 @@ Future<List<ElevationPoint>> getElevationPointList() {
 
     double mileage = 0.0;
     int i = 0;
+    int colorIndex = Random().nextInt(_signPointColors.length);
     bool isForward = true;
 
     for (var geo in arrays) {
@@ -50,6 +62,7 @@ Future<List<ElevationPoint>> getElevationPointList() {
 
       var elevationPoint = new ElevationPoint()
         ..name = name
+        ..color = _signPointColors[colorIndex++ % _signPointColors.length]
         ..point = Offset(mileage, elevation);
 
       list.add(elevationPoint);
