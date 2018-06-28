@@ -12,14 +12,28 @@ class ElevationGraphView extends StatefulWidget {
 }
 
 class ElevationGraphViewState extends State<ElevationGraphView> {
+  List<ElevationPoint> elevationPointList;
+
+  @override
+  void initState() {
+    super.initState();
+
+    getElevationPointList().then((list) {
+      setState(() {
+        elevationPointList = list;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    print("elevationPointList = $elevationPointList");
     return Container(
       width: double.infinity,
       height: double.infinity,
       padding: EdgeInsets.only(bottom: 100.0),
       child: CustomPaint(
-        painter: ElevationPainter(getElevationPointList()),
+        painter: ElevationPainter(elevationPointList, 7000.0, 2000.0),
       ),
     );
   }
@@ -38,11 +52,17 @@ const List<Color> signPointColors = [
 ];
 
 class ElevationPainter extends CustomPainter {
+  // ===== Data
   List<ElevationPoint> elevationPointList;
+  ElevationPoint lastPoint;
 
+  double maxVerticalAxisValue;
+  double verticalAxisInterval;
+
+  // ===== Paint
   Paint mLinePaint = Paint()
-    ..color = Colors.blueAccent
-    ..strokeWidth = 2.0
+    ..color = Color(0xFF003c60)
+    ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 
   Paint mSignPointPaint = Paint()..color = Colors.pink;
@@ -54,9 +74,11 @@ class ElevationPainter extends CustomPainter {
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 
-  ElevationPoint lastPoint;
-
-  ElevationPainter(this.elevationPointList) : lastPoint = elevationPointList.last;
+  ElevationPainter(
+    this.elevationPointList,
+    this.maxVerticalAxisValue,
+    this.verticalAxisInterval,
+  ) : lastPoint = elevationPointList?.last;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -68,14 +90,18 @@ class ElevationPainter extends CustomPainter {
   /// =========== 绘制纵轴部分
 
   /// 绘制背景数轴
+  /// 根据最大高度和间隔值计算出需要把纵轴分成几段
   void drawVerticalAxis(Canvas canvas, Size size) {
     var availableHeight = size.height;
-    var interval = availableHeight / 9.0;
+
+    var levelCount = maxVerticalAxisValue / verticalAxisInterval;
+
+    var interval = availableHeight / levelCount;
 
     canvas.save();
-    for (int i = 1; i < 10; i++) {
-      var textPre = 10 - i;
-      drawVerticalAxisLine(canvas, size, "${textPre}000", i * interval);
+    for (int i = 0; i < levelCount; i++) {
+      var level = (verticalAxisInterval * (levelCount - i)).toInt();
+      drawVerticalAxisLine(canvas, size, "$level", i * interval);
     }
     canvas.restore();
   }
@@ -127,34 +153,34 @@ class ElevationPainter extends CustomPainter {
 
   /// 绘制海拔图连线部分
   void drawLines(Size size, Canvas canvas) {
-    double ratioX = size.width * 1.0 / elevationPointList.last.point.dx;
-    double ratioY = size.height / 1000.0;
+    size = Size(size.width - 40, size.height - 15);
+    canvas.translate(0.0, 15.0);
 
-    var firstPoint = elevationPointList.first.point;
+    var pointList = elevationPointList;
+    if (pointList == null || pointList.isEmpty) return;
+
+    double ratioX = size.width * 1.0 / pointList.last.point.dx;
+    double ratioY = size.height / maxVerticalAxisValue;
+
+    var firstPoint = pointList.first.point;
     var path = Path();
     path.moveTo(firstPoint.dx * ratioX, firstPoint.dy * ratioY);
-    for (var p in elevationPointList) {
-      path.lineTo(p.point.dx * ratioX, p.point.dy * ratioY);
+    for (var p in pointList) {
+      path.lineTo(p.point.dx * ratioX, size.height - p.point.dy * ratioY);
     }
 
+    // 绘制线条下面的渐变部分
+    drawGradualShadow(path, size, canvas);
+
+    // 先绘制渐变再绘制线,避免线被遮挡住
     canvas.save();
     canvas.drawPath(path, mLinePaint);
     canvas.restore();
 
-    // 绘制线条下面的渐变部分
-    path.lineTo(size.width, size.height);
-    path.lineTo(0.0, size.height);
-
-    mGradualPaint.shader = ui.Gradient.linear(
-        Offset(0.0, 300.0), Offset(0.0, size.height), [Colors.lightBlue, Colors.greenAccent]);
-
-    canvas.save();
-    canvas.drawPath(path, mGradualPaint);
-    canvas.restore();
-
+    // 绘制关键点及文字
     canvas.save();
     int i = Random().nextInt(signPointColors.length);
-    for (var p in elevationPointList) {
+    for (var p in pointList) {
       if (p.name == null || p.name.isEmpty) continue;
       if (p.name.contains('_')) continue;
 
@@ -182,7 +208,8 @@ class ElevationPainter extends CustomPainter {
 
       // 绘制关键点
       mSignPointPaint.color = signPointColors[i++ % signPointColors.length];
-      canvas.drawCircle(Offset(p.point.dx * ratioX, p.point.dy * ratioY), 3.0, mSignPointPaint);
+      canvas.drawCircle(
+          Offset(p.point.dx * ratioX, size.height - p.point.dy * ratioY), 2.0, mSignPointPaint);
 
       // 默认将文字绘制的起始点设为文字的宽度的中部, 但是如果文字超出了边界, 将其限制在边界内
       var left = p.point.dx * ratioX - tp.width / 2;
@@ -196,18 +223,32 @@ class ElevationPainter extends CustomPainter {
       canvas.drawRRect(
           RRect.fromLTRBXY(
             left - 2,
-            p.point.dy * ratioY - tp.height -8,
+            size.height - p.point.dy * ratioY - tp.height - 8,
             left + tp.width + 2,
-            p.point.dy * ratioY - 4,
+            size.height - p.point.dy * ratioY - 4,
             6.0,
             6.0,
           ),
           mSignPointPaint);
 
       // 绘制文字
-      tp.paint(canvas, Offset(left, p.point.dy * ratioY - tp.height -6));
+      tp.paint(canvas, Offset(left, size.height - p.point.dy * ratioY - tp.height - 6));
     }
 
+    canvas.restore();
+  }
+
+  void drawGradualShadow(Path path, Size size, Canvas canvas) {
+    var gradualPath = Path();
+    gradualPath.addPath(path, Offset.zero);
+    gradualPath.lineTo(size.width, size.height);
+    gradualPath.lineTo(0.0, size.height);
+
+    mGradualPaint.shader = ui.Gradient.linear(
+        Offset(0.0, 300.0), Offset(0.0, size.height), [Color(0x821E88E5), Color(0x0C1E88E5)]);
+
+    canvas.save();
+    canvas.drawPath(gradualPath, mGradualPaint);
     canvas.restore();
   }
 
