@@ -83,19 +83,16 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     } else if (newScale > 10.0) {
       newScale = 10.0;
     }
+    var newScrollRange = newScale * context.size.width - context.size.width;
 
-    final Offset positionDelta = (details.focalPoint - _lastPosition);
+    Offset positionDelta = Offset(newScrollRange / 2.0, 0.0);
+    var newPosition = -positionDelta;
 
-    var center = (_downPoint.dx - 200.0 ) / 200.0;
-    print('center = $center');
+    print('positionDelta = $newPosition');
 
     setState(() {
       _scale = newScale;
-
-      // 表示没有缩放操作才响应平移操作
-      if (_lastScaleValue == newScale) {
-        _position = positionDelta;
-      }
+      _position = newPosition;
     });
   }
 
