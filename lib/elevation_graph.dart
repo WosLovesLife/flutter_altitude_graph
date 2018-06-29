@@ -13,8 +13,6 @@ class ElevationGraphView extends StatefulWidget {
 
 class ElevationGraphViewState extends State<ElevationGraphView> {
   List<ElevationPoint> elevationPointList;
-  double _maxHorizontalAxisValue; // = lastPoint.point.dx
-  double _minHorizontalAxisValue; // = 5
 
   // 放大/和放大的基点的值. 在动画/手势中会实时变化
   double _scale = 1.0;
@@ -40,10 +38,9 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   @override
   Widget build(BuildContext context) {
-    final Matrix4 transform = new Matrix4.identity()..translate(_position.dx, 0.0);
-
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
+//      onPanDown: _onPanDown,
       onScaleStart: _onScaleStart,
       onScaleUpdate: _onScaleUpdate,
       onScaleEnd: _onScaleEnd,
@@ -51,16 +48,13 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
         width: double.infinity,
         height: double.infinity,
         padding: EdgeInsets.only(bottom: 100.0),
-        child: Transform(
-          transform: transform,
-          alignment: Alignment.center,
-          child: CustomPaint(
-            painter: ElevationPainter(
-              elevationPointList,
-              7000.0,
-              2000.0,
-              _scale,
-            ),
+        child: CustomPaint(
+          painter: ElevationPainter(
+            elevationPointList,
+            7000.0,
+            2000.0,
+            _scale,
+            _position,
           ),
         ),
       ),
@@ -69,26 +63,60 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   // ===========
 
+  bool isScaling;
+
   _onScaleStart(ScaleStartDetails details) {
     _downPoint = details.focalPoint;
     _lastScaleValue = _scale;
     _lastPosition = details.focalPoint - _position;
+    isScaling = false;
+
+//    print("_downPoint = $_downPoint; _lastPosition = $_lastPosition");
   }
 
   _onScaleUpdate(ScaleUpdateDetails details) {
     double newScale = (_lastScaleValue * details.scale);
 
-    if (newScale < 0.96) {
-      newScale = 0.96;
+    if (newScale < 1.0) {
+      newScale = 1.0;
     } else if (newScale > 10.0) {
       newScale = 10.0;
     }
-    var newScrollRange = newScale * context.size.width - context.size.width;
 
-    Offset positionDelta = Offset(newScrollRange / 2.0, 0.0);
-    var newPosition = -positionDelta;
+    if (newScale != _lastScaleValue) {
+      isScaling = true;
+    }
 
-    print('positionDelta = $newPosition');
+//    var newPosition  = (details.focalPoint - _lastPosition);
+
+    //  滑动手势造成的偏移量
+    Offset newOffset = (details.focalPoint - _lastPosition);
+    Offset deltaOffset = newOffset - _position;
+
+    // 缩放手势造成的偏移量
+    double deltaScale = newScale - _scale;
+    double left = deltaScale * context.size.width / -2.0;
+
+    // 根据缩放的focus对left进行调整
+    double center = context.size.width / 2.0;
+    double focus = center - _downPoint.dx;
+    double ratio = focus / center;
+//    left += -ratio* left;
+
+    Offset positionDelta = Offset(left, 0.0);
+
+    Offset delta;
+    if (isScaling) {
+      delta = positionDelta;
+    } else {
+      delta = deltaOffset;
+    }
+
+    // 总偏移量
+    var newPosition = _position + delta;
+    // 将x范围限制图表宽度内
+    double clampedX = newPosition.dx.clamp((newScale - 1) * -context.size.width, 0.0);
+    newPosition = Offset(clampedX, newPosition.dy);
 
     setState(() {
       _scale = newScale;
@@ -105,42 +133,49 @@ const double DOTTED_LINE_INTERVAL = 2.0;
 
 class ElevationPainter extends CustomPainter {
   // ===== Data
-  List<ElevationPoint> elevationPointList;
-  ElevationPoint lastPoint;
+  List<ElevationPoint> _elevationPointList;
 
   double maxVerticalAxisValue;
   double verticalAxisInterval;
 
-  double horizontalAxisIntervalOnScreen = 40.0;
-  double scale = 1.0;
+  double _scale = 1.0;
+  Offset _offset = Offset.zero;
 
   // ===== Paint
-  Paint mLinePaint = Paint()
+  Paint _linePaint = Paint()
     ..color = Color(0xFF003c60)
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 
-  Paint mSignPointPaint = Paint()..color = Colors.pink;
+  Paint _signPointPaint = Paint()..color = Colors.pink;
 
-  Paint mGradualPaint = Paint()..style = PaintingStyle.fill;
+  Paint _gradualPaint = Paint()..style = PaintingStyle.fill;
 
-  Paint mLevelLinePaint = Paint()
+  Paint _levelLinePaint = Paint()
     ..color = Colors.amber
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 
   ElevationPainter(
-    this.elevationPointList,
+    this._elevationPointList,
     this.maxVerticalAxisValue,
     this.verticalAxisInterval,
-    this.scale,
-  ) : lastPoint = elevationPointList?.last;
+    this._scale,
+    this._offset,
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
-    drawLines(size, canvas);
+    Size availableSize = Size(size.width, size.height - 15.0);
+    canvas.translate(0.0, 15.0);
 
-    drawVerticalAxis(canvas, size);
+    Size lineSize = Size(availableSize.width * _scale - 50, availableSize.height);
+    canvas.save();
+    canvas.translate(_offset.dx + 10.0, 0.0);
+    drawLines(lineSize, canvas);
+    canvas.restore();
+
+    drawVerticalAxis(canvas, availableSize);
   }
 
   /// =========== 绘制纵轴部分
@@ -170,7 +205,7 @@ class ElevationPainter extends CustomPainter {
     // 虚线的宽度 = 可用宽度 - 文字宽度 - 文字宽度的左右边距
     var dottedLineWidth = size.width - tp.width - AXIS_TEXT_MARGIN * 2;
     canvas.drawPath(newDottedLine(dottedLineWidth, height, DOTTED_LINE_WIDTH, DOTTED_LINE_INTERVAL),
-        mLevelLinePaint);
+        _levelLinePaint);
 
     // 绘制虚线右边的Text
     // Text的绘制起始点 = 可用宽度 - 文字宽度 - 左边距
@@ -209,13 +244,10 @@ class ElevationPainter extends CustomPainter {
 
   /// 绘制海拔图连线部分
   void drawLines(Size size, Canvas canvas) {
-    size = Size(size.width - 40, size.height - 15);
-    canvas.translate(0.0, 15.0);
-
-    var pointList = elevationPointList;
+    var pointList = _elevationPointList;
     if (pointList == null || pointList.isEmpty) return;
 
-    double ratioX = size.width * 1.0 / pointList.last.point.dx * scale;
+    double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
     double ratioY = size.height / maxVerticalAxisValue;
 
     var firstPoint = pointList.first.point;
@@ -230,7 +262,7 @@ class ElevationPainter extends CustomPainter {
 
     // 先绘制渐变再绘制线,避免线被遮挡住
     canvas.save();
-    canvas.drawPath(path, mLinePaint);
+    canvas.drawPath(path, _linePaint);
     canvas.restore();
 
     // 绘制关键点及文字
@@ -262,9 +294,9 @@ class ElevationPainter extends CustomPainter {
       )..layout();
 
       // 绘制关键点
-      mSignPointPaint.color = p.color;
+      _signPointPaint.color = p.color;
       canvas.drawCircle(
-          Offset(p.point.dx * ratioX, size.height - p.point.dy * ratioY), 2.0, mSignPointPaint);
+          Offset(p.point.dx * ratioX, size.height - p.point.dy * ratioY), 2.0, _signPointPaint);
 
       var left = p.point.dx * ratioX - tp.width / 2;
 
@@ -278,7 +310,7 @@ class ElevationPainter extends CustomPainter {
             6.0,
             6.0,
           ),
-          mSignPointPaint);
+          _signPointPaint);
 
       // 绘制文字
       tp.paint(canvas, Offset(left, size.height - p.point.dy * ratioY - tp.height - 6));
@@ -293,11 +325,11 @@ class ElevationPainter extends CustomPainter {
     gradualPath.lineTo(gradualPath.getBounds().width, size.height);
     gradualPath.relativeLineTo(-gradualPath.getBounds().width, 0.0);
 
-    mGradualPaint.shader = ui.Gradient.linear(
+    _gradualPaint.shader = ui.Gradient.linear(
         Offset(0.0, 300.0), Offset(0.0, size.height), [Color(0x821E88E5), Color(0x0C1E88E5)]);
 
     canvas.save();
-    canvas.drawPath(gradualPath, mGradualPaint);
+    canvas.drawPath(gradualPath, _gradualPaint);
     canvas.restore();
   }
 
