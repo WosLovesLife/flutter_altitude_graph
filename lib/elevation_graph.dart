@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:elevation_graph/elevation_point.dart';
@@ -19,11 +17,10 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   Offset _position = Offset.zero;
 
   // ==== 辅助动画/手势的计算
-  Offset _downPoint;
-
-  /// 上次放大的比例, 用于帮助下次放大操作时放大的速度保持一致.
+  Offset _focusPoint;
+  // ==== 上次放大的比例, 用于帮助下次放大操作时放大的速度保持一致.
   double _lastScaleValue = 1.0;
-  Offset _lastPosition = Offset.zero;
+  Offset _lastUpdateFocalPoint = Offset.zero;
 
   @override
   void initState() {
@@ -63,15 +60,10 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   // ===========
 
-  bool isScaling;
-
   _onScaleStart(ScaleStartDetails details) {
-    _downPoint = details.focalPoint;
+    _focusPoint = details.focalPoint;
     _lastScaleValue = _scale;
-    _lastPosition = details.focalPoint - _position;
-    isScaling = false;
-
-//    print("_downPoint = $_downPoint; _lastPosition = $_lastPosition");
+    _lastUpdateFocalPoint = details.focalPoint;
   }
 
   _onScaleUpdate(ScaleUpdateDetails details) {
@@ -83,38 +75,26 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
       newScale = 10.0;
     }
 
-    if (newScale != _lastScaleValue) {
-      isScaling = true;
+
+    // 算法: 左偏移量L = 当前焦点f在之前图宽上的位置p带入到新图宽中再减去焦点f在屏幕上的位置
+    // ratioInGraph 就是当前的焦点实际对应在之前的图宽上的比例
+    double ratioInGraph = (_position.dx.abs() + _focusPoint.dx) / (_scale * context.size.width);
+    // 现在新计算出的图宽
+    double newTotalWidth = newScale * context.size.width;
+    // 将之前的比例带入当前的图宽即为焦点在新图上的位置
+    double newLocationInGraph = ratioInGraph * newTotalWidth;
+    // 最后用焦点在屏幕上的位置 - 在图上的位置就是图应该向左偏移的位置
+    double left = _focusPoint.dx - newLocationInGraph;
+
+    // true表示没有进行缩放, 只在不缩放的时候响应水平移动的操作
+    if (left == _position.dx) {
+      var deltaPosition = (details.focalPoint - _lastUpdateFocalPoint);
+      _lastUpdateFocalPoint = details.focalPoint;
+      left += deltaPosition.dx;
     }
 
-//    var newPosition  = (details.focalPoint - _lastPosition);
-
-    //  滑动手势造成的偏移量
-    Offset newOffset = (details.focalPoint - _lastPosition);
-    Offset deltaOffset = newOffset - _position;
-
-    // 缩放手势造成的偏移量
-    double deltaScale = newScale - _scale;
-    double left = deltaScale * context.size.width / -2.0;
-
-    // 根据缩放的focus对left进行调整
-    double center = context.size.width / 2.0;
-    double focus = center - _downPoint.dx;
-    double ratio = focus / center;
-//    left += -ratio* left;
-
-    Offset positionDelta = Offset(left, 0.0);
-
-    Offset delta;
-    if (isScaling) {
-      delta = positionDelta;
-    } else {
-      delta = deltaOffset;
-    }
-
-    // 总偏移量
-    var newPosition = _position + delta;
     // 将x范围限制图表宽度内
+    var newPosition = Offset(left, 0.0);
     double clampedX = newPosition.dx.clamp((newScale - 1) * -context.size.width, 0.0);
     newPosition = Offset(clampedX, newPosition.dy);
 
@@ -169,9 +149,9 @@ class ElevationPainter extends CustomPainter {
     Size availableSize = Size(size.width, size.height - 15.0);
     canvas.translate(0.0, 15.0);
 
-    Size lineSize = Size(availableSize.width * _scale - 50, availableSize.height);
+    Size lineSize = Size(availableSize.width * _scale, availableSize.height);
     canvas.save();
-    canvas.translate(_offset.dx + 10.0, 0.0);
+    canvas.translate(_offset.dx, 0.0);
     drawLines(lineSize, canvas);
     canvas.restore();
 
