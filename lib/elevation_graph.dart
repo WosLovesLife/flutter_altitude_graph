@@ -165,7 +165,7 @@ class ElevationPainter extends CustomPainter {
 
     drawVerticalAxis(canvas, availableSize);
 
-    drawHorizontalAxis(canvas, availableSize, availableSize.width * _scale,0.0);
+    drawHorizontalAxis(canvas, availableSize, availableSize.width * _scale, _offset.dx);
   }
 
   /// =========== 绘制纵轴部分
@@ -234,45 +234,31 @@ class ElevationPainter extends CustomPainter {
     Offset lastPoint = _elevationPointList?.last?.point;
     if (lastPoint == null) return;
 
-    double totalMiter = lastPoint.dx;
     double ratio = size.width / totalWidth;
-    double miterToShow = ratio * totalMiter;
-
-    double interval = (miterToShow / 6.0).floorToDouble();
-    print('miterToShow = $miterToShow; interval = $interval');
-    if(interval >= 100.0){
-      interval = (interval / 100.0).floorToDouble() * 100.0;
-    }else if(interval > 10.0){
-      interval = (interval / 10.0).floorToDouble() * 10.0;
+    double a = _elevationPointList.last.point.dx * ratio;
+    double interval = a / 6.0;
+    double miters;
+    if (interval >= 100.0) {
+      miters = (interval / 100.0).ceilToDouble() * 100;
+    } else if (interval >= 10) {
+      miters = (interval / 10.0).ceilToDouble() * 10;
+    } else {
+      miters = (interval / 5.0).ceilToDouble() * 5;
     }
-
-    double miterInterval = lastPoint.dx / interval;
-    double hInterval = size.width / miterInterval;
-
-//    if(interval >= 100.0){
-//      if(size.width - hInterval * 6.0 > hInterval){
-//        interval +=100.0;
-//      }
-//    }else if(interval > 10.0){
-//      if(size.width - hInterval * 6.0 > hInterval){
-//        interval +=10.0;
-//      }
-//    }
-//
-//    miterInterval = lastPoint.dx / interval;
-//    hInterval = size.width / miterInterval;
-//    print('miterInterval = $miterInterval; hInterval = $hInterval');
+    double r = miters / interval;
+    double hInterval = size.width / 6.0 * r;
 
     canvas.save();
-    canvas.translate(0.0, size.height + 2);
-    for (int i = 0; i <= 6; i++) {
+    canvas.translate(left, size.height + 2);
+    double count = totalWidth / hInterval;
+    for (int i = 0; i <= count; i++) {
       drawHorizontalAxisLine(
         canvas,
         size,
-        "${(i * interval).floor()}",
-        i * hInterval * _scale,
+        "${i * miters.toInt()}",
+        i * hInterval,
       );
-      canvas.drawCircle(Offset(i * hInterval* _scale, 0.0), 2.0, _signPointPaint);
+      canvas.drawCircle(Offset(i * hInterval, 0.0), 2.0, _signPointPaint);
     }
     canvas.restore();
   }
