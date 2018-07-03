@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 import 'package:elevation_graph/elevation_point.dart';
@@ -14,10 +16,12 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   // 放大/和放大的基点的值. 在动画/手势中会实时变化
   double _scale = 1.0;
+  double _maxScale = 1.0;
   Offset _position = Offset.zero;
 
   // ==== 辅助动画/手势的计算
   Offset _focusPoint;
+
   // ==== 上次放大的比例, 用于帮助下次放大操作时放大的速度保持一致.
   double _lastScaleValue = 1.0;
   Offset _lastUpdateFocalPoint = Offset.zero;
@@ -29,6 +33,12 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     getElevationPointList().then((list) {
       setState(() {
         elevationPointList = list;
+        double miters = list?.last?.point?.dx ?? 0.0;
+        if (miters > 0) {
+          _maxScale = max(miters / 30.0, 1.0);
+        } else {
+          _maxScale = 1.0;
+        }
       });
     });
   }
@@ -71,10 +81,9 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
     if (newScale < 1.0) {
       newScale = 1.0;
-    } else if (newScale > 10.0) {
-      newScale = 10.0;
+    } else if (newScale > _maxScale) {
+      newScale = _maxScale;
     }
-
 
     // 算法: 左偏移量L = 当前焦点f在之前图宽上的位置p带入到新图宽中再减去焦点f在屏幕上的位置
     // ratioInGraph 就是当前的焦点实际对应在之前的图宽上的比例
@@ -86,12 +95,10 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     // 最后用焦点在屏幕上的位置 - 在图上的位置就是图应该向左偏移的位置
     double left = _focusPoint.dx - newLocationInGraph;
 
-    // true表示没有进行缩放, 只在不缩放的时候响应水平移动的操作
-    if (left == _position.dx) {
-      var deltaPosition = (details.focalPoint - _lastUpdateFocalPoint);
-      _lastUpdateFocalPoint = details.focalPoint;
-      left += deltaPosition.dx;
-    }
+    // 加上水平拖动的偏移量
+    var deltaPosition = (details.focalPoint - _lastUpdateFocalPoint);
+    _lastUpdateFocalPoint = details.focalPoint;
+    left += deltaPosition.dx;
 
     // 将x范围限制图表宽度内
     var newPosition = Offset(left, 0.0);
@@ -107,7 +114,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   _onScaleEnd(ScaleEndDetails details) {}
 }
 
-const int AXIS_TEXT_MARGIN = 8;
+const int VERTICAL_TEXT_WIDTH = 30;
 const double DOTTED_LINE_WIDTH = 2.0;
 const double DOTTED_LINE_INTERVAL = 2.0;
 
@@ -146,7 +153,8 @@ class ElevationPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    Size availableSize = Size(size.width, size.height - 15.0);
+    Size availableSize = Size(size.width, size.height - 30.0);
+    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width, size.height)));
     canvas.translate(0.0, 15.0);
 
     Size lineSize = Size(availableSize.width * _scale, availableSize.height);
@@ -156,6 +164,8 @@ class ElevationPainter extends CustomPainter {
     canvas.restore();
 
     drawVerticalAxis(canvas, availableSize);
+
+    drawHorizontalAxis(canvas, availableSize, availableSize.width * _scale,0.0);
   }
 
   /// =========== 绘制纵轴部分
@@ -183,13 +193,13 @@ class ElevationPainter extends CustomPainter {
 
     // 绘制虚线
     // 虚线的宽度 = 可用宽度 - 文字宽度 - 文字宽度的左右边距
-    var dottedLineWidth = size.width - tp.width - AXIS_TEXT_MARGIN * 2;
+    var dottedLineWidth = size.width - VERTICAL_TEXT_WIDTH;
     canvas.drawPath(newDottedLine(dottedLineWidth, height, DOTTED_LINE_WIDTH, DOTTED_LINE_INTERVAL),
         _levelLinePaint);
 
     // 绘制虚线右边的Text
     // Text的绘制起始点 = 可用宽度 - 文字宽度 - 左边距
-    var textLeft = size.width - tp.width - AXIS_TEXT_MARGIN;
+    var textLeft = size.width - tp.width - 4;
     tp.paint(canvas, Offset(textLeft, height - tp.height / 2));
   }
 
@@ -213,11 +223,68 @@ class ElevationPainter extends CustomPainter {
       text: TextSpan(
         text: text,
         style: TextStyle(
-          color: Colors.blueGrey,
-          fontSize: 10.0,
+          color: Colors.black87,
+          fontSize: 8.0,
         ),
       ),
     );
+  }
+
+  void drawHorizontalAxis(Canvas canvas, Size size, double totalWidth, double left) {
+    Offset lastPoint = _elevationPointList?.last?.point;
+    if (lastPoint == null) return;
+
+    double totalMiter = lastPoint.dx;
+    double ratio = size.width / totalWidth;
+    double miterToShow = ratio * totalMiter;
+
+    double interval = (miterToShow / 6.0).floorToDouble();
+    print('miterToShow = $miterToShow; interval = $interval');
+    if(interval >= 100.0){
+      interval = (interval / 100.0).floorToDouble() * 100.0;
+    }else if(interval > 10.0){
+      interval = (interval / 10.0).floorToDouble() * 10.0;
+    }
+
+    double miterInterval = lastPoint.dx / interval;
+    double hInterval = size.width / miterInterval;
+
+//    if(interval >= 100.0){
+//      if(size.width - hInterval * 6.0 > hInterval){
+//        interval +=100.0;
+//      }
+//    }else if(interval > 10.0){
+//      if(size.width - hInterval * 6.0 > hInterval){
+//        interval +=10.0;
+//      }
+//    }
+//
+//    miterInterval = lastPoint.dx / interval;
+//    hInterval = size.width / miterInterval;
+//    print('miterInterval = $miterInterval; hInterval = $hInterval');
+
+    canvas.save();
+    canvas.translate(0.0, size.height + 2);
+    for (int i = 0; i <= 6; i++) {
+      drawHorizontalAxisLine(
+        canvas,
+        size,
+        "${(i * interval).floor()}",
+        i * hInterval * _scale,
+      );
+      canvas.drawCircle(Offset(i * hInterval* _scale, 0.0), 2.0, _signPointPaint);
+    }
+    canvas.restore();
+  }
+
+  /// 绘制数轴的一行
+  void drawHorizontalAxisLine(Canvas canvas, Size size, String text, double width) {
+    var tp = newVerticalAxisTextPainter(text)..layout();
+
+    // 绘制虚线右边的Text
+    // Text的绘制起始点 = 可用宽度 - 文字宽度 - 左边距
+    var textLeft = width + tp.width / -2;
+    tp.paint(canvas, Offset(textLeft, 0.0));
   }
 
   /// =========== 绘制海拔图连线部分
