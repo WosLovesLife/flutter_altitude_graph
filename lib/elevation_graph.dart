@@ -47,7 +47,6 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-//      onPanDown: _onPanDown,
       onScaleStart: _onScaleStart,
       onScaleUpdate: _onScaleUpdate,
       onScaleEnd: _onScaleEnd,
@@ -153,19 +152,35 @@ class ElevationPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 30是给上下留出的距离, 这样竖轴的最顶端的字就不会被截断, 下方可以用来显示横轴的字
     Size availableSize = Size(size.width, size.height - 30.0);
     canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width, size.height)));
+    // 向下滚动15的距离给顶部留出空间
     canvas.translate(0.0, 15.0);
 
-    Size lineSize = Size(availableSize.width * _scale, availableSize.height);
-    canvas.save();
-    canvas.translate(_offset.dx, 0.0);
-    drawLines(lineSize, canvas);
-    canvas.restore();
-
+    // 绘制竖轴
     drawVerticalAxis(canvas, availableSize);
 
-    drawHorizontalAxis(canvas, availableSize, availableSize.width * _scale, _offset.dx);
+    // 绘制线图
+    // 50是给左右留出间距, 避免标签上的文字被截断, 同时避免线图覆盖竖轴的字
+    Size lineSize = Size(availableSize.width * _scale - 50, availableSize.height);
+    canvas.save();
+    // 剪裁绘制的窗口, 避免覆盖竖轴 同时节省绘制的开销
+    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width - 20, size.height)));
+    // _offset.dx通常都是些向左偏移的量 +15 是为了避免出关键点标签的文字被截断
+    canvas.translate(_offset.dx + 15, 0.0);
+    drawLines(canvas, lineSize);
+    canvas.restore();
+
+    // 绘制横轴
+    canvas.save();
+    Size horizontalAxisSize = Size(availableSize.width - 20, availableSize.height);
+    // 不需要避免竖轴被遮挡问题, 这一步是为了减少绘制时的开销.
+    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width, size.height)));
+    // x偏移和线图对应上, y偏移将绘制点挪到底部
+    canvas.translate(_offset.dx + 15, horizontalAxisSize.height + 2);
+    drawHorizontalAxis(canvas, horizontalAxisSize, lineSize.width);
+    canvas.restore();
   }
 
   /// =========== 绘制纵轴部分
@@ -230,7 +245,7 @@ class ElevationPainter extends CustomPainter {
     );
   }
 
-  void drawHorizontalAxis(Canvas canvas, Size size, double totalWidth, double left) {
+  void drawHorizontalAxis(Canvas canvas, Size size, double totalWidth) {
     Offset lastPoint = _elevationPointList?.last?.point;
     if (lastPoint == null) return;
 
@@ -248,8 +263,6 @@ class ElevationPainter extends CustomPainter {
     double r = miters / interval;
     double hInterval = size.width / 6.0 * r;
 
-    canvas.save();
-    canvas.translate(left, size.height + 2);
     double count = totalWidth / hInterval;
     for (int i = 0; i <= count; i++) {
       drawHorizontalAxisLine(
@@ -258,9 +271,7 @@ class ElevationPainter extends CustomPainter {
         "${i * miters.toInt()}",
         i * hInterval,
       );
-      canvas.drawCircle(Offset(i * hInterval, 0.0), 2.0, _signPointPaint);
     }
-    canvas.restore();
   }
 
   /// 绘制数轴的一行
@@ -276,7 +287,7 @@ class ElevationPainter extends CustomPainter {
   /// =========== 绘制海拔图连线部分
 
   /// 绘制海拔图连线部分
-  void drawLines(Size size, Canvas canvas) {
+  void drawLines(Canvas canvas, Size size) {
     var pointList = _elevationPointList;
     if (pointList == null || pointList.isEmpty) return;
 
@@ -321,7 +332,7 @@ class ElevationPainter extends CustomPainter {
           text: splitMapJoin,
           style: TextStyle(
             color: Colors.white,
-            fontSize: 11.0,
+            fontSize: 8.0,
           ),
         ),
       )..layout();
@@ -340,8 +351,8 @@ class ElevationPainter extends CustomPainter {
             size.height - p.point.dy * ratioY - tp.height - 8,
             left + tp.width + 2,
             size.height - p.point.dy * ratioY - 4,
-            6.0,
-            6.0,
+            tp.width / 2.0,
+            tp.width / 2.0,
           ),
           _signPointPaint);
 
