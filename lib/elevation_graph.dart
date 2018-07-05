@@ -11,6 +11,8 @@ class ElevationGraphView extends StatefulWidget {
   }
 }
 
+const double SLIDING_BTN_WIDTH = 30.0;
+
 class ElevationGraphViewState extends State<ElevationGraphView> {
   List<ElevationPoint> elevationPointList;
 
@@ -25,6 +27,13 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   // ==== 上次放大的比例, 用于帮助下次放大操作时放大的速度保持一致.
   double _lastScaleValue = 1.0;
   Offset _lastUpdateFocalPoint = Offset.zero;
+
+  // ==== 缩放滑钮
+  bool _sizeInitialed = false;
+  double _lOffsetX = 0.0;
+  double _lastLOffsetX = 0.0;
+  double _rOffsetX = 0.0;
+  double _lastROffsetX = 0.0;
 
   @override
   void initState() {
@@ -45,26 +54,93 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onScaleStart: _onScaleStart,
-      onScaleUpdate: _onScaleUpdate,
-      onScaleEnd: _onScaleEnd,
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        padding: EdgeInsets.only(bottom: 100.0),
-        child: CustomPaint(
-          painter: ElevationPainter(
-            elevationPointList,
-            7000.0,
-            2000.0,
-            _scale,
-            _position,
+    if (!_sizeInitialed) {
+      var bound = context?.findRenderObject()?.semanticBounds;
+      if (bound != null) {
+        _sizeInitialed = true;
+        _rOffsetX = bound.width - SLIDING_BTN_WIDTH;
+      }
+    }
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      child: Column(
+        children: <Widget>[
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onScaleStart: _onScaleStart,
+                onScaleUpdate: _onScaleUpdate,
+                onScaleEnd: _onScaleEnd,
+                child: CustomPaint(
+                  painter: ElevationPainter(
+                    elevationPointList,
+                    7000.0,
+                    2000.0,
+                    _scale,
+                    _position,
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
+          Container(
+            width: double.infinity,
+            color: Colors.deepOrange,
+            child: Stack(
+              children: <Widget>[
+                Transform(
+                  transform: Matrix4.translationValues(_lOffsetX, 0.0, 0.0),
+                  child: Container(
+                    width: SLIDING_BTN_WIDTH,
+                    height: 48.0,
+                    color: Colors.teal,
+                    child: GestureDetector(
+                      onHorizontalDragStart: _onLBHorizontalDragDown,
+                      onHorizontalDragUpdate: _onLBHorizontalDragUpdate,
+                      onHorizontalDragEnd: _onLBHorizontalDragEnd,
+                      child: Icon(Icons.chevron_left),
+                    ),
+                  ),
+                ),
+                Transform(
+                  transform: Matrix4.translationValues(_rOffsetX, 0.0, 0.0),
+                  child: Container(
+                    width: SLIDING_BTN_WIDTH,
+                    height: 48.0,
+                    color: Colors.teal,
+                    child: GestureDetector(
+                      onHorizontalDragStart: _onRBHorizontalDragDown,
+                      onHorizontalDragUpdate: _onRBHorizontalDragUpdate,
+                      onHorizontalDragEnd: _onRBHorizontalDragEnd,
+                      child: Icon(Icons.chevron_right),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        ],
       ),
     );
+  }
+
+  /// 计算偏移量, 默认放大时都是向右偏移的, 因此想在放大时保持比例, 就需要将缩放点移至0点
+  /// 算法: 左偏移量L = 当前焦点f在之前图宽上的位置p带入到新图宽中再减去焦点f在屏幕上的位置
+  double _calculatePosition(double newScale, double focusOnScreen) {
+    // ratioInGraph 就是当前的焦点实际对应在之前的图宽上的比例
+    var widgetWidth = context.size.width;
+    double ratioInGraph = (_position.dx.abs() + focusOnScreen) / (_scale * widgetWidth);
+    // 现在新计算出的图宽
+    double newTotalWidth = newScale * widgetWidth;
+    // 将之前的比例带入当前的图宽即为焦点在新图上的位置
+    double newLocationInGraph = ratioInGraph * newTotalWidth;
+    // 最后用焦点在屏幕上的位置 - 在图上的位置就是图应该向左偏移的位置
+    return focusOnScreen - newLocationInGraph;
   }
 
   // ===========
@@ -84,15 +160,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
       newScale = _maxScale;
     }
 
-    // 算法: 左偏移量L = 当前焦点f在之前图宽上的位置p带入到新图宽中再减去焦点f在屏幕上的位置
-    // ratioInGraph 就是当前的焦点实际对应在之前的图宽上的比例
-    double ratioInGraph = (_position.dx.abs() + _focusPoint.dx) / (_scale * context.size.width);
-    // 现在新计算出的图宽
-    double newTotalWidth = newScale * context.size.width;
-    // 将之前的比例带入当前的图宽即为焦点在新图上的位置
-    double newLocationInGraph = ratioInGraph * newTotalWidth;
-    // 最后用焦点在屏幕上的位置 - 在图上的位置就是图应该向左偏移的位置
-    double left = _focusPoint.dx - newLocationInGraph;
+    double left = _calculatePosition(newScale, _focusPoint.dx);
 
     // 加上水平拖动的偏移量
     var deltaPosition = (details.focalPoint - _lastUpdateFocalPoint);
@@ -111,9 +179,75 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   }
 
   _onScaleEnd(ScaleEndDetails details) {}
+
+  // =========== 左边按钮的滑动操作
+
+  _onLBHorizontalDragDown(DragStartDetails details) {
+    _lastLOffsetX = details.globalPosition.dx;
+  }
+
+  _onLBHorizontalDragUpdate(DragUpdateDetails details) {
+    var widgetWidth = context.size.width;
+
+    var deltaX = details.globalPosition.dx - _lastLOffsetX;
+    _lastLOffsetX = details.globalPosition.dx;
+    double newLOffsetX = _lOffsetX + deltaX;
+    newLOffsetX = newLOffsetX.clamp(0.0, _rOffsetX - SLIDING_BTN_WIDTH);
+
+    double ratio = (newLOffsetX + (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
+    double newScale = ratio * _maxScale + 1;
+
+    double left = _calculatePosition(newScale, widgetWidth);
+
+    // 将x范围限制图表宽度内
+    var lower = (newScale - 1) * -widgetWidth;
+    double clampedX = left.clamp(min(0.0, lower), 0.0);
+    var newPosition = Offset(clampedX, 0.0);
+
+    setState(() {
+      _lOffsetX = newLOffsetX;
+      _scale = newScale;
+      _position = newPosition;
+    });
+  }
+
+  _onLBHorizontalDragEnd(DragEndDetails details) {}
+
+  // =========== 右边按钮的滑动操作
+
+  _onRBHorizontalDragDown(DragStartDetails details) {
+    _lastROffsetX = details.globalPosition.dx;
+  }
+
+  _onRBHorizontalDragUpdate(DragUpdateDetails details) {
+    var widgetWidth = context.size.width;
+
+    var deltaX = details.globalPosition.dx - _lastROffsetX;
+    _lastROffsetX = details.globalPosition.dx;
+    double newROffsetX = _rOffsetX + deltaX;
+    newROffsetX = newROffsetX.clamp(_lOffsetX + SLIDING_BTN_WIDTH, widgetWidth - SLIDING_BTN_WIDTH);
+
+    double ratio = (_lOffsetX + (widgetWidth - newROffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
+    double newScale = ratio * _maxScale + 1;
+
+    double left = _calculatePosition(newScale, 0.0);
+
+    // 将x范围限制图表宽度内
+    var lower = (newScale - 1) * -widgetWidth;
+    double clampedX = left.clamp(min(0.0, lower), 0.0);
+    var newPosition = Offset(clampedX, 0.0);
+
+    setState(() {
+      _rOffsetX = newROffsetX;
+      _scale = newScale;
+      _position = newPosition;
+    });
+  }
+
+  _onRBHorizontalDragEnd(DragEndDetails details) {}
 }
 
-const int VERTICAL_TEXT_WIDTH = 30;
+const int VERTICAL_TEXT_WIDTH = 25;
 const double DOTTED_LINE_WIDTH = 2.0;
 const double DOTTED_LINE_INTERVAL = 2.0;
 
@@ -166,7 +300,7 @@ class ElevationPainter extends CustomPainter {
     Size lineSize = Size(availableSize.width * _scale - 50, availableSize.height);
     canvas.save();
     // 剪裁绘制的窗口, 避免覆盖竖轴 同时节省绘制的开销
-    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width - 20, size.height)));
+    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width - 24, size.height)));
     // _offset.dx通常都是些向左偏移的量 +15 是为了避免出关键点标签的文字被截断
     canvas.translate(_offset.dx + 15, 0.0);
     drawLines(canvas, lineSize);
@@ -214,7 +348,7 @@ class ElevationPainter extends CustomPainter {
 
     // 绘制虚线右边的Text
     // Text的绘制起始点 = 可用宽度 - 文字宽度 - 左边距
-    var textLeft = size.width - tp.width - 4;
+    var textLeft = size.width - tp.width - 3;
     tp.paint(canvas, Offset(textLeft, height - tp.height / 2));
   }
 
