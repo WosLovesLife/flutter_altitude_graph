@@ -164,6 +164,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   }
 
   _onScaleUpdate(ScaleUpdateDetails details) {
+    var widgetWidth = context.size.width;
     double newScale = (_lastScaleValue * details.scale);
 
     if (newScale < 1.0) {
@@ -180,13 +181,25 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     left += deltaPosition.dx;
 
     // 将x范围限制图表宽度内
-    var newPosition = Offset(left, 0.0);
-    double clampedX = newPosition.dx.clamp((newScale - 1) * -context.size.width, 0.0);
-    newPosition = Offset(clampedX, newPosition.dy);
+    double newPositionX = left.clamp((newScale - 1) * -widgetWidth, 0.0);
+    var newPosition = Offset(newPositionX, 0.0);
+
+    // 根据缩放,同步缩略滑钮的状态
+    var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
+    double lOffsetX = -newPositionX / newScale;
+    double rOffsetX = ((newScale-1) * widgetWidth + newPositionX) / newScale;
+
+    double r = maxViewportWidth / widgetWidth;
+    lOffsetX *= r;
+    rOffsetX *= r;
+
+    rOffsetX = widgetWidth - SLIDING_BTN_WIDTH - rOffsetX;
 
     setState(() {
       _scale = newScale;
       _position = newPosition;
+      _lOffsetX = lOffsetX;
+      _rOffsetX = rOffsetX;
     });
   }
 
