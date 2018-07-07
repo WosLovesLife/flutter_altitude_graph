@@ -90,15 +90,28 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
           ),
           Container(
             width: double.infinity,
-            color: Colors.deepOrange,
+            height: 48.0,
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: Colors.black26))
+            ),
             child: Stack(
               children: <Widget>[
+                Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: CustomPaint(
+                    painter: ElevationThumbPainter(
+                      elevationPointList,
+                      7000.0,
+                    ),
+                  ),
+                ),
                 Transform(
                   transform: Matrix4.translationValues(_lOffsetX, 0.0, 0.0),
                   child: Container(
                     width: SLIDING_BTN_WIDTH,
-                    height: 48.0,
-                    color: Colors.teal,
+                    height: double.infinity,
+                    color: Colors.black54.withAlpha(100),
                     child: GestureDetector(
                       onHorizontalDragStart: _onLBHorizontalDragDown,
                       onHorizontalDragUpdate: _onLBHorizontalDragUpdate,
@@ -111,8 +124,8 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
                   transform: Matrix4.translationValues(_rOffsetX, 0.0, 0.0),
                   child: Container(
                     width: SLIDING_BTN_WIDTH,
-                    height: 48.0,
-                    color: Colors.teal,
+                    height: double.infinity,
+                    color: Colors.black54.withAlpha(100),
                     child: GestureDetector(
                       onHorizontalDragStart: _onRBHorizontalDragDown,
                       onHorizontalDragUpdate: _onRBHorizontalDragUpdate,
@@ -194,7 +207,8 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     double newLOffsetX = _lOffsetX + deltaX;
     newLOffsetX = newLOffsetX.clamp(0.0, _rOffsetX - SLIDING_BTN_WIDTH);
 
-    double ratio = (newLOffsetX + (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
+    double ratio =
+        (newLOffsetX + (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
     double newScale = ratio * _maxScale + 1;
 
     double left = _calculatePosition(newScale, widgetWidth);
@@ -227,7 +241,8 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     double newROffsetX = _rOffsetX + deltaX;
     newROffsetX = newROffsetX.clamp(_lOffsetX + SLIDING_BTN_WIDTH, widgetWidth - SLIDING_BTN_WIDTH);
 
-    double ratio = (_lOffsetX + (widgetWidth - newROffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
+    double ratio =
+        (_lOffsetX + (widgetWidth - newROffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
     double newScale = ratio * _maxScale + 1;
 
     double left = _calculatePosition(newScale, 0.0);
@@ -514,5 +529,71 @@ class ElevationPainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
     return true;
+  }
+}
+
+class ElevationThumbPainter extends CustomPainter {
+  // ===== Data
+  List<ElevationPoint> _elevationPointList;
+
+  double maxVerticalAxisValue;
+
+  // ===== Paint
+  Paint _linePaint = Paint()
+    ..color = Colors.grey
+    ..strokeWidth = 0.5
+    ..style = PaintingStyle.stroke;
+
+  Paint _gradualPaint = Paint()
+    ..style = PaintingStyle.fill
+    ..color = Colors.grey.shade300;
+
+  ElevationThumbPainter(this._elevationPointList, this.maxVerticalAxisValue);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    drawLines(canvas, size);
+  }
+
+  @override
+  bool shouldRepaint(CustomPainter oldDelegate) {
+    return true;
+  }
+
+  /// =========== 绘制海拔图连线部分
+
+  /// 绘制海拔图连线部分
+  void drawLines(Canvas canvas, Size size) {
+    var pointList = _elevationPointList;
+    if (pointList == null || pointList.isEmpty) return;
+
+    double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
+    double ratioY = size.height / maxVerticalAxisValue;
+
+    var firstPoint = pointList.first.point;
+    var path = Path();
+    path.moveTo(firstPoint.dx * ratioX, size.height - firstPoint.dy * ratioY);
+    for (var p in pointList) {
+      path.lineTo(p.point.dx * ratioX, size.height - p.point.dy * ratioY);
+    }
+
+    // 绘制线条下面的渐变部分
+    drawGradualShadow(path, size, canvas);
+
+    // 先绘制渐变再绘制线,避免线被遮挡住
+    canvas.save();
+    canvas.drawPath(path, _linePaint);
+    canvas.restore();
+  }
+
+  void drawGradualShadow(Path path, Size size, Canvas canvas) {
+    var gradualPath = Path();
+    gradualPath.addPath(path, Offset.zero);
+    gradualPath.lineTo(gradualPath.getBounds().width, size.height);
+    gradualPath.relativeLineTo(-gradualPath.getBounds().width, 0.0);
+
+    canvas.save();
+    canvas.drawPath(gradualPath, _gradualPaint);
+    canvas.restore();
   }
 }
