@@ -91,14 +91,13 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
           Container(
             width: double.infinity,
             height: 48.0,
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.black26))
-            ),
+            decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.black26))),
             child: Stack(
               children: <Widget>[
                 Container(
                   width: double.infinity,
                   height: double.infinity,
+                  padding: EdgeInsets.only(left: SLIDING_BTN_WIDTH, right: SLIDING_BTN_WIDTH),
                   child: CustomPaint(
                     painter: ElevationThumbPainter(
                       elevationPointList,
@@ -201,22 +200,29 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   _onLBHorizontalDragUpdate(DragUpdateDetails details) {
     var widgetWidth = context.size.width;
+    var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
+    var rOffsetX = (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH);
 
     var deltaX = details.globalPosition.dx - _lastLOffsetX;
     _lastLOffsetX = details.globalPosition.dx;
     double newLOffsetX = _lOffsetX + deltaX;
-    newLOffsetX = newLOffsetX.clamp(0.0, _rOffsetX - SLIDING_BTN_WIDTH);
 
-    double ratio =
-        (newLOffsetX + (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
-    double newScale = ratio * _maxScale + 1;
+    // 根据最大缩放倍数, 限制滑动的最大距离.
+    // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
+    // 最大窗口宽 / 最大倍数 = 最小的窗口宽.
+    double minViewportWidth = maxViewportWidth / _maxScale;
+    // 最大窗口宽 - 最小窗口宽 - 当前右边的偏移量 = 当前左边的最大偏移量
+    double maxLeft = maxViewportWidth - minViewportWidth - rOffsetX;
+    newLOffsetX = newLOffsetX.clamp(0.0, maxLeft);
 
-    double left = _calculatePosition(newScale, widgetWidth);
+    // 得到当前的窗口大小
+    double viewportWidth = maxViewportWidth - newLOffsetX - rOffsetX;
+    // 最大窗口大小 / 当前窗口大小 = 应该缩放的倍数
+    double newScale = maxViewportWidth / viewportWidth;
+    // 计算缩放后的左偏移量
+    double newPositionX = _calculatePosition(newScale, widgetWidth);
 
-    // 将x范围限制图表宽度内
-    var lower = (newScale - 1) * -widgetWidth;
-    double clampedX = left.clamp(min(0.0, lower), 0.0);
-    var newPosition = Offset(clampedX, 0.0);
+    var newPosition = Offset(newPositionX, 0.0);
 
     setState(() {
       _lOffsetX = newLOffsetX;
@@ -235,22 +241,29 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   _onRBHorizontalDragUpdate(DragUpdateDetails details) {
     var widgetWidth = context.size.width;
+    var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
+    var rOffsetX = (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH);
 
     var deltaX = details.globalPosition.dx - _lastROffsetX;
     _lastROffsetX = details.globalPosition.dx;
     double newROffsetX = _rOffsetX + deltaX;
-    newROffsetX = newROffsetX.clamp(_lOffsetX + SLIDING_BTN_WIDTH, widgetWidth - SLIDING_BTN_WIDTH);
 
-    double ratio =
-        (_lOffsetX + (widgetWidth - newROffsetX - SLIDING_BTN_WIDTH)) / (widgetWidth - 60.0);
-    double newScale = ratio * _maxScale + 1;
+    // 根据最大缩放倍数, 限制滑动的最大距离.
+    // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
+    // 最大窗口宽 / 最大倍数 = 最小的窗口宽.
+    double minViewportWidth = maxViewportWidth / _maxScale;
+    // 左滑块宽 + 最小窗口宽 + 当前左偏移量 = 当前右边的最小偏移量
+    double minRight = SLIDING_BTN_WIDTH + minViewportWidth + _lOffsetX;
+    newROffsetX = newROffsetX.clamp(minRight, widgetWidth - SLIDING_BTN_WIDTH);
 
-    double left = _calculatePosition(newScale, 0.0);
+    // 得到当前的窗口大小
+    double viewportWidth = maxViewportWidth - _lOffsetX - rOffsetX;
+    // 最大窗口大小 / 当前窗口大小 = 应该缩放的倍数
+    double newScale = maxViewportWidth / viewportWidth;
+    // 计算缩放后的左偏移量
+    double newPositionX = _calculatePosition(newScale, 0.0);
 
-    // 将x范围限制图表宽度内
-    var lower = (newScale - 1) * -widgetWidth;
-    double clampedX = left.clamp(min(0.0, lower), 0.0);
-    var newPosition = Offset(clampedX, 0.0);
+    var newPosition = Offset(newPositionX, 0.0);
 
     setState(() {
       _rOffsetX = newROffsetX;
