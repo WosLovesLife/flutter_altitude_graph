@@ -14,6 +14,8 @@ class ElevationPoint {
   Offset point;
 
   Color color;
+
+  TextPainter textPainter;
 }
 
 String pointJson =
@@ -60,10 +62,33 @@ Future<List<ElevationPoint>> getElevationPointList() {
       var fDistance = double.parse(geo["F_DISTANCE"]);
       var rDistance = double.parse(geo["R_DISTANCE"]);
 
+      // 向String插入换行符使文字竖向绘制
+      // TODO 这种写法应该是不正确的, 暂时不知道更好的作
+      var splitMapJoin = name.splitMapJoin('', onNonMatch: (m) {
+        if (m.isNotEmpty)
+          return '$m\n';
+        else
+          return '';
+      });
+      splitMapJoin = splitMapJoin.substring(0, splitMapJoin.length - 1);
+
+      var tp = TextPainter(
+        textAlign: TextAlign.left,
+        textDirection: TextDirection.ltr,
+        text: TextSpan(
+          text: splitMapJoin,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 8.0,
+          ),
+        ),
+      )..layout();
+
       var elevationPoint = new ElevationPoint()
         ..name = name
         ..color = _signPointColors[colorIndex++ % _signPointColors.length]
-        ..point = Offset(mileage, elevation);
+        ..point = Offset(mileage, elevation)
+        ..textPainter = tp;
 
       list.add(elevationPoint);
 

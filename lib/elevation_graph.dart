@@ -44,7 +44,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
         elevationPointList = list;
         double miters = list?.last?.point?.dx ?? 0.0;
         if (miters > 0) {
-          _maxScale = max(miters / 30.0, 1.0);
+          _maxScale = max(miters / 50.0, 1.0);
         } else {
           _maxScale = 1.0;
         }
@@ -187,7 +187,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     // 根据缩放,同步缩略滑钮的状态
     var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
     double lOffsetX = -newPositionX / newScale;
-    double rOffsetX = ((newScale-1) * widgetWidth + newPositionX) / newScale;
+    double rOffsetX = ((newScale - 1) * widgetWidth + newPositionX) / newScale;
 
     double r = maxViewportWidth / widgetWidth;
     lOffsetX *= r;
@@ -490,33 +490,12 @@ class ElevationPainter extends CustomPainter {
       if (p.name == null || p.name.isEmpty) continue;
       if (p.name.contains('_')) continue;
 
-      // 向String插入换行符使文字竖向绘制
-      // TODO 这种写法应该是不正确的, 暂时不知道更好的作
-      var splitMapJoin = p.name.splitMapJoin('', onNonMatch: (m) {
-        if (m.isNotEmpty)
-          return '$m\n';
-        else
-          return '';
-      });
-      splitMapJoin = splitMapJoin.substring(0, splitMapJoin.length - 1);
-
-      var tp = TextPainter(
-        textAlign: TextAlign.left,
-        textDirection: TextDirection.ltr,
-        text: TextSpan(
-          text: splitMapJoin,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 8.0,
-          ),
-        ),
-      )..layout();
-
       // 绘制关键点
       _signPointPaint.color = p.color;
       canvas.drawCircle(
           Offset(p.point.dx * ratioX, size.height - p.point.dy * ratioY), 2.0, _signPointPaint);
 
+      var tp = p.textPainter;
       var left = p.point.dx * ratioX - tp.width / 2;
 
       // 绘制文字的背景框
