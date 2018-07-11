@@ -29,11 +29,13 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   Offset _lastUpdateFocalPoint = Offset.zero;
 
   // ==== 缩放滑钮
-  bool _sizeInitialed = false;
-  double _lOffsetX = 0.0;
-  double _lastLOffsetX = 0.0;
-  double _rOffsetX = 0.0;
-  double _lastROffsetX = 0.0;
+  double _leftSlidingBtnLeft = 0.0;
+  double _lastLeftSlidingBtnLeft = 0.0;
+  double _rightSlidingBtnRight = 0.0;
+  double _lastRightSlidingBtnRight = 0.0;
+  double _slidingBarLeft = SLIDING_BTN_WIDTH;
+  double _slidingBarRight = SLIDING_BTN_WIDTH;
+  double _lastSlidingBarPosition = 0.0;
 
   @override
   void initState() {
@@ -54,14 +56,6 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_sizeInitialed) {
-      var bound = context?.findRenderObject()?.semanticBounds;
-      if (bound != null) {
-        _sizeInitialed = true;
-        _rOffsetX = bound.width - SLIDING_BTN_WIDTH;
-      }
-    }
-
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -105,31 +99,51 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
                     ),
                   ),
                 ),
-                Transform(
-                  transform: Matrix4.translationValues(_lOffsetX, 0.0, 0.0),
-                  child: Container(
-                    width: SLIDING_BTN_WIDTH,
-                    height: double.infinity,
-                    color: Colors.black54.withAlpha(100),
-                    child: GestureDetector(
-                      onHorizontalDragStart: _onLBHorizontalDragDown,
-                      onHorizontalDragUpdate: _onLBHorizontalDragUpdate,
-                      onHorizontalDragEnd: _onLBHorizontalDragEnd,
+                Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  margin: EdgeInsets.only(left: _slidingBarLeft, right: _slidingBarRight),
+                  child: GestureDetector(
+                    onHorizontalDragStart: _onSlidingBarHorizontalDragStart,
+                    onHorizontalDragUpdate: _onSlidingBarHorizontalDragUpdate,
+                    onHorizontalDragEnd: _onSlidingBarHorizontalDragEnd,
+                  ),
+                ),
+                Container(
+                  width: SLIDING_BTN_WIDTH + _leftSlidingBtnLeft,
+                  height: double.infinity,
+                  padding: EdgeInsets.only(left: _leftSlidingBtnLeft),
+                  color: Colors.black12,
+                  child: GestureDetector(
+                    onHorizontalDragStart: _onLBHorizontalDragDown,
+                    onHorizontalDragUpdate: _onLBHorizontalDragUpdate,
+                    onHorizontalDragEnd: _onLBHorizontalDragEnd,
+                    child: Container(
+                      height: double.infinity,
+                      width: SLIDING_BTN_WIDTH,
+                      color: Colors.black54.withAlpha(100),
                       child: Icon(Icons.chevron_left),
                     ),
                   ),
                 ),
-                Transform(
-                  transform: Matrix4.translationValues(_rOffsetX, 0.0, 0.0),
+                Align(
+                  alignment: Alignment.centerRight,
                   child: Container(
-                    width: SLIDING_BTN_WIDTH,
+                    width: SLIDING_BTN_WIDTH + _rightSlidingBtnRight,
+                    padding: EdgeInsets.only(right: _rightSlidingBtnRight),
                     height: double.infinity,
-                    color: Colors.black54.withAlpha(100),
+                    color: Colors.black12,
+                    alignment: Alignment.centerLeft,
                     child: GestureDetector(
                       onHorizontalDragStart: _onRBHorizontalDragDown,
                       onHorizontalDragUpdate: _onRBHorizontalDragUpdate,
                       onHorizontalDragEnd: _onRBHorizontalDragEnd,
-                      child: Icon(Icons.chevron_right),
+                      child: Container(
+                        height: double.infinity,
+                        width: SLIDING_BTN_WIDTH,
+                        color: Colors.black54.withAlpha(100),
+                        child: Icon(Icons.chevron_right),
+                      ),
                     ),
                   ),
                 ),
@@ -193,13 +207,13 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     lOffsetX *= r;
     rOffsetX *= r;
 
-    rOffsetX = widgetWidth - SLIDING_BTN_WIDTH - rOffsetX;
-
     setState(() {
       _scale = newScale;
       _position = newPosition;
-      _lOffsetX = lOffsetX;
-      _rOffsetX = rOffsetX;
+      _leftSlidingBtnLeft = lOffsetX;
+      _rightSlidingBtnRight = rOffsetX;
+      _slidingBarLeft = lOffsetX + SLIDING_BTN_WIDTH;
+      _slidingBarRight = rOffsetX + SLIDING_BTN_WIDTH;
     });
   }
 
@@ -208,28 +222,27 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   // =========== 左边按钮的滑动操作
 
   _onLBHorizontalDragDown(DragStartDetails details) {
-    _lastLOffsetX = details.globalPosition.dx;
+    _lastLeftSlidingBtnLeft = details.globalPosition.dx;
   }
 
   _onLBHorizontalDragUpdate(DragUpdateDetails details) {
     var widgetWidth = context.size.width;
     var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
-    var rOffsetX = (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH);
 
-    var deltaX = details.globalPosition.dx - _lastLOffsetX;
-    _lastLOffsetX = details.globalPosition.dx;
-    double newLOffsetX = _lOffsetX + deltaX;
+    var deltaX = details.globalPosition.dx - _lastLeftSlidingBtnLeft;
+    _lastLeftSlidingBtnLeft = details.globalPosition.dx;
+    double newLOffsetX = _leftSlidingBtnLeft + deltaX;
 
     // 根据最大缩放倍数, 限制滑动的最大距离.
     // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
     // 最大窗口宽 / 最大倍数 = 最小的窗口宽.
     double minViewportWidth = maxViewportWidth / _maxScale;
     // 最大窗口宽 - 最小窗口宽 - 当前右边的偏移量 = 当前左边的最大偏移量
-    double maxLeft = maxViewportWidth - minViewportWidth - rOffsetX;
+    double maxLeft = maxViewportWidth - minViewportWidth - _rightSlidingBtnRight;
     newLOffsetX = newLOffsetX.clamp(0.0, maxLeft);
 
     // 得到当前的窗口大小
-    double viewportWidth = maxViewportWidth - newLOffsetX - rOffsetX;
+    double viewportWidth = maxViewportWidth - newLOffsetX - _rightSlidingBtnRight;
     // 最大窗口大小 / 当前窗口大小 = 应该缩放的倍数
     double newScale = maxViewportWidth / viewportWidth;
     // 计算缩放后的左偏移量
@@ -238,9 +251,10 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     var newPosition = Offset(newPositionX, 0.0);
 
     setState(() {
-      _lOffsetX = newLOffsetX;
+      _leftSlidingBtnLeft = newLOffsetX;
       _scale = newScale;
       _position = newPosition;
+      _slidingBarLeft = newLOffsetX + SLIDING_BTN_WIDTH;
     });
   }
 
@@ -249,28 +263,27 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   // =========== 右边按钮的滑动操作
 
   _onRBHorizontalDragDown(DragStartDetails details) {
-    _lastROffsetX = details.globalPosition.dx;
+    _lastRightSlidingBtnRight = details.globalPosition.dx;
   }
 
   _onRBHorizontalDragUpdate(DragUpdateDetails details) {
     var widgetWidth = context.size.width;
     var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
-    var rOffsetX = (widgetWidth - _rOffsetX - SLIDING_BTN_WIDTH);
 
-    var deltaX = details.globalPosition.dx - _lastROffsetX;
-    _lastROffsetX = details.globalPosition.dx;
-    double newROffsetX = _rOffsetX + deltaX;
+    var deltaX = details.globalPosition.dx - _lastRightSlidingBtnRight;
+    _lastRightSlidingBtnRight = details.globalPosition.dx;
+    double newROffsetX = _rightSlidingBtnRight - deltaX;
 
     // 根据最大缩放倍数, 限制滑动的最大距离.
     // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
     // 最大窗口宽 / 最大倍数 = 最小的窗口宽.
     double minViewportWidth = maxViewportWidth / _maxScale;
-    // 左滑块宽 + 最小窗口宽 + 当前左偏移量 = 当前右边的最小偏移量
-    double minRight = SLIDING_BTN_WIDTH + minViewportWidth + _lOffsetX;
-    newROffsetX = newROffsetX.clamp(minRight, widgetWidth - SLIDING_BTN_WIDTH);
+    // 最大窗口宽 - 最小窗口宽 - 当前右边的偏移量 = 当前左边的最大偏移量
+    double maxLeft = maxViewportWidth - minViewportWidth - _leftSlidingBtnLeft;
+    newROffsetX = newROffsetX.clamp(0.0, maxLeft);
 
     // 得到当前的窗口大小
-    double viewportWidth = maxViewportWidth - _lOffsetX - rOffsetX;
+    double viewportWidth = maxViewportWidth - _leftSlidingBtnLeft - newROffsetX;
     // 最大窗口大小 / 当前窗口大小 = 应该缩放的倍数
     double newScale = maxViewportWidth / viewportWidth;
     // 计算缩放后的左偏移量
@@ -279,13 +292,52 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     var newPosition = Offset(newPositionX, 0.0);
 
     setState(() {
-      _rOffsetX = newROffsetX;
+      _rightSlidingBtnRight = newROffsetX;
       _scale = newScale;
       _position = newPosition;
+      _slidingBarRight = newROffsetX + SLIDING_BTN_WIDTH;
     });
   }
 
   _onRBHorizontalDragEnd(DragEndDetails details) {}
+
+  // =========== 右边按钮的滑动操作
+
+  _onSlidingBarHorizontalDragStart(DragStartDetails details) {
+    _lastSlidingBarPosition = details.globalPosition.dx;
+  }
+
+  _onSlidingBarHorizontalDragUpdate(DragUpdateDetails details) {
+    var widgetWidth = context.size.width;
+
+    // 得到本次滑动的偏移量, 乘倍数后和之前的偏移量相减等于新的偏移量
+    var deltaPositionX = (details.globalPosition.dx - _lastSlidingBarPosition);
+    _lastSlidingBarPosition = details.globalPosition.dx;
+    double left = _position.dx - deltaPositionX * _scale;
+
+    // 将x范围限制图表宽度内
+    double newPositionX = left.clamp((_scale - 1) * -widgetWidth, 0.0);
+    var newPosition = Offset(newPositionX, 0.0);
+
+    // 同步缩略滑钮的状态
+    var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
+    double lOffsetX = -newPositionX / _scale;
+    double rOffsetX = ((_scale - 1) * widgetWidth + newPositionX) / _scale;
+
+    double r = maxViewportWidth / widgetWidth;
+    lOffsetX *= r;
+    rOffsetX *= r;
+
+    setState(() {
+      _position = newPosition;
+      _leftSlidingBtnLeft = lOffsetX;
+      _rightSlidingBtnRight = rOffsetX;
+      _slidingBarLeft = lOffsetX + SLIDING_BTN_WIDTH;
+      _slidingBarRight = rOffsetX + SLIDING_BTN_WIDTH;
+    });
+  }
+
+  _onSlidingBarHorizontalDragEnd(DragEndDetails details) {}
 }
 
 const int VERTICAL_TEXT_WIDTH = 25;
