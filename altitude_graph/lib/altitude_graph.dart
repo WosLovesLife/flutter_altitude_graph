@@ -1,24 +1,56 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
-import 'package:elevation_graph/elevation_point.dart';
 
-class ElevationGraphView extends StatefulWidget {
-  @override
-  ElevationGraphViewState createState() {
-    return new ElevationGraphViewState();
+class AltitudePoint {
+  String name;
+
+  int level;
+
+  Offset point;
+
+  Color color;
+
+  TextPainter textPainter;
+
+  AltitudePoint(this.name, this.level, this.point, this.color, {this.textPainter}) {
+    if (name == null || name.isEmpty || textPainter != null) return;
+
+    // 向String插入换行符使文字竖向绘制
+    // TODO 这种写法应该是不正确的, 暂时不知道更好的方式
+    var splitMapJoin = name.splitMapJoin('', onNonMatch: (m) {
+      return m.isNotEmpty ? "$m\n" : "";
+    });
+    splitMapJoin = splitMapJoin.substring(0, splitMapJoin.length - 1);
+
+    this.textPainter = TextPainter(
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+      text: TextSpan(
+        text: splitMapJoin,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 8.0,
+        ),
+      ),
+    )..layout();
   }
+}
+
+class AltitudeGraphView extends StatefulWidget {
+  final List<AltitudePoint> altitudePointList;
+  final double maxScale;
+
+  AltitudeGraphView(this.altitudePointList, {this.maxScale = 1.0});
+
+  @override
+  AltitudeGraphViewState createState() => new AltitudeGraphViewState();
 }
 
 const double SLIDING_BTN_WIDTH = 30.0;
 
-class ElevationGraphViewState extends State<ElevationGraphView> {
-  List<ElevationPoint> elevationPointList;
-
+class AltitudeGraphViewState extends State<AltitudeGraphView> {
   // 放大/和放大的基点的值. 在动画/手势中会实时变化
   double _scale = 1.0;
-  double _maxScale = 1.0;
   Offset _position = Offset.zero;
 
   // ==== 辅助动画/手势的计算
@@ -38,20 +70,15 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
   double _lastSlidingBarPosition = 0.0;
 
   @override
-  void initState() {
-    super.initState();
+  void didUpdateWidget(AltitudeGraphView oldWidget) {
+    super.didUpdateWidget(oldWidget);
 
-    getElevationPointList().then((list) {
+    // todo 如果当前缩放大于新的最大缩放, 则调整缩放
+    if(_scale > widget.maxScale){
       setState(() {
-        elevationPointList = list;
-        double miters = list?.last?.point?.dx ?? 0.0;
-        if (miters > 0) {
-          _maxScale = max(miters / 50.0, 1.0);
-        } else {
-          _maxScale = 1.0;
-        }
+        _scale = widget.maxScale;
       });
-    });
+    }
   }
 
   @override
@@ -71,8 +98,8 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
                 onScaleUpdate: _onScaleUpdate,
                 onScaleEnd: _onScaleEnd,
                 child: CustomPaint(
-                  painter: ElevationPainter(
-                    elevationPointList,
+                  painter: AltitudePainter(
+                    widget.altitudePointList,
                     7000.0,
                     2000.0,
                     _scale,
@@ -93,8 +120,8 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
                   height: double.infinity,
                   padding: EdgeInsets.only(left: SLIDING_BTN_WIDTH, right: SLIDING_BTN_WIDTH),
                   child: CustomPaint(
-                    painter: ElevationThumbPainter(
-                      elevationPointList,
+                    painter: AltitudeThumbPainter(
+                      widget.altitudePointList,
                       7000.0,
                     ),
                   ),
@@ -183,8 +210,8 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
 
     if (newScale < 1.0) {
       newScale = 1.0;
-    } else if (newScale > _maxScale) {
-      newScale = _maxScale;
+    } else if (newScale > widget.maxScale) {
+      newScale = widget.maxScale;
     }
 
     double left = _calculatePosition(newScale, _focusPoint.dx);
@@ -236,7 +263,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     // 根据最大缩放倍数, 限制滑动的最大距离.
     // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
     // 最大窗口宽 / 最大倍数 = 最小的窗口宽.
-    double minViewportWidth = maxViewportWidth / _maxScale;
+    double minViewportWidth = maxViewportWidth / widget.maxScale;
     // 最大窗口宽 - 最小窗口宽 - 当前右边的偏移量 = 当前左边的最大偏移量
     double maxLeft = maxViewportWidth - minViewportWidth - _rightSlidingBtnRight;
     newLOffsetX = newLOffsetX.clamp(0.0, maxLeft);
@@ -277,7 +304,7 @@ class ElevationGraphViewState extends State<ElevationGraphView> {
     // 根据最大缩放倍数, 限制滑动的最大距离.
     // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
     // 最大窗口宽 / 最大倍数 = 最小的窗口宽.
-    double minViewportWidth = maxViewportWidth / _maxScale;
+    double minViewportWidth = maxViewportWidth / widget.maxScale;
     // 最大窗口宽 - 最小窗口宽 - 当前右边的偏移量 = 当前左边的最大偏移量
     double maxLeft = maxViewportWidth - minViewportWidth - _leftSlidingBtnLeft;
     newROffsetX = newROffsetX.clamp(0.0, maxLeft);
@@ -344,9 +371,9 @@ const int VERTICAL_TEXT_WIDTH = 25;
 const double DOTTED_LINE_WIDTH = 2.0;
 const double DOTTED_LINE_INTERVAL = 2.0;
 
-class ElevationPainter extends CustomPainter {
+class AltitudePainter extends CustomPainter {
   // ===== Data
-  List<ElevationPoint> _elevationPointList;
+  List<AltitudePoint> _altitudePointList;
 
   double maxVerticalAxisValue;
   double verticalAxisInterval;
@@ -369,8 +396,8 @@ class ElevationPainter extends CustomPainter {
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 
-  ElevationPainter(
-    this._elevationPointList,
+  AltitudePainter(
+    this._altitudePointList,
     this.maxVerticalAxisValue,
     this.verticalAxisInterval,
     this._scale,
@@ -473,11 +500,11 @@ class ElevationPainter extends CustomPainter {
   }
 
   void drawHorizontalAxis(Canvas canvas, Size size, double totalWidth) {
-    Offset lastPoint = _elevationPointList?.last?.point;
+    Offset lastPoint = _altitudePointList?.last?.point;
     if (lastPoint == null) return;
 
     double ratio = size.width / totalWidth;
-    double a = _elevationPointList.last.point.dx * ratio;
+    double a = _altitudePointList.last.point.dx * ratio;
     double interval = a / 6.0;
     double miters;
     if (interval >= 100.0) {
@@ -515,7 +542,7 @@ class ElevationPainter extends CustomPainter {
 
   /// 绘制海拔图连线部分
   void drawLines(Canvas canvas, Size size) {
-    var pointList = _elevationPointList;
+    var pointList = _altitudePointList;
     if (pointList == null || pointList.isEmpty) return;
 
     double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
@@ -540,7 +567,6 @@ class ElevationPainter extends CustomPainter {
     canvas.save();
     for (var p in pointList) {
       if (p.name == null || p.name.isEmpty) continue;
-      if (p.name.contains('_')) continue;
 
       // 绘制关键点
       _signPointPaint.color = p.color;
@@ -589,9 +615,9 @@ class ElevationPainter extends CustomPainter {
   }
 }
 
-class ElevationThumbPainter extends CustomPainter {
+class AltitudeThumbPainter extends CustomPainter {
   // ===== Data
-  List<ElevationPoint> _elevationPointList;
+  List<AltitudePoint> _altitudePointList;
 
   double maxVerticalAxisValue;
 
@@ -605,7 +631,7 @@ class ElevationThumbPainter extends CustomPainter {
     ..style = PaintingStyle.fill
     ..color = Colors.grey.shade300;
 
-  ElevationThumbPainter(this._elevationPointList, this.maxVerticalAxisValue);
+  AltitudeThumbPainter(this._altitudePointList, this.maxVerticalAxisValue);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -621,7 +647,7 @@ class ElevationThumbPainter extends CustomPainter {
 
   /// 绘制海拔图连线部分
   void drawLines(Canvas canvas, Size size) {
-    var pointList = _elevationPointList;
+    var pointList = _altitudePointList;
     if (pointList == null || pointList.isEmpty) return;
 
     double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
