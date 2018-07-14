@@ -48,8 +48,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    print('build');
-
     return new Scaffold(
       appBar: new AppBar(
         title: new Text("Altitude Graph"),

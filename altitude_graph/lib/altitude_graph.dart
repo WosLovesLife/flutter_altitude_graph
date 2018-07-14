@@ -39,8 +39,64 @@ class AltitudePoint {
 class AltitudeGraphView extends StatefulWidget {
   final List<AltitudePoint> altitudePointList;
   final double maxScale;
+  final Color axisLineColor;
+  final Color axisTextColor;
+  final Color pathColor;
+  final List<Color> gradientColors;
+  final bool slidingBarVisible;
+  final Widget leftSlidingButton;
+  final Widget rightSlidingButton;
+  int maxLevel = 0;
+  int minLevel = 0;
+  double maxElevation = 0.0;
+  double minElevation = 0.0;
+  double elevationInterval = 0.0;
 
-  AltitudeGraphView(this.altitudePointList, {this.maxScale = 1.0});
+  AltitudeGraphView(
+    this.altitudePointList, {
+    this.maxScale = 1.0,
+    this.axisLineColor = Colors.amber,
+    this.axisTextColor = Colors.black,
+    this.pathColor = Colors.amber,
+    this.gradientColors = const [Color(0x821E88E5), Color(0x0C1E88E5)],
+    this.slidingBarVisible = true,
+    this.leftSlidingButton = const Icon(Icons.chevron_left),
+    this.rightSlidingButton = const Icon(Icons.chevron_right),
+  }){
+    if (altitudePointList == null || altitudePointList.isEmpty) return;
+
+    for (AltitudePoint p in altitudePointList) {
+//      p.point = p.point.translate(0.0, -1000.0);
+
+      if (p.point.dy > maxElevation) {
+        maxElevation = p.point.dy;
+      } else if (p.point.dy < minElevation) {
+        minElevation = p.point.dy;
+      }
+      if (p.level > maxLevel) {
+        maxLevel = p.level;
+      } else if (p.level < minLevel) {
+        minLevel = p.level;
+      }
+    }
+
+    if (maxElevation > 1000) {
+      maxElevation = (maxElevation / 1000.0).ceil() * 1000.0;
+      minElevation = (minElevation / 1000.0).floor() * 1000.0;
+      elevationInterval = maxElevation / 5;
+      elevationInterval = (elevationInterval / 1000.0).floor() * 1000.0;
+    } else if (maxElevation > 100) {
+      maxElevation = (maxElevation / 100.0).ceil() * 100.0;
+      minElevation = (minElevation / 100.0).floor() * 100.0;
+      elevationInterval = maxElevation / 5;
+      elevationInterval = (elevationInterval / 100.0).floor() * 100.0;
+    } else if (maxElevation > 10) {
+      maxElevation = (maxElevation / 10.0).ceil() * 10.0;
+      minElevation = (minElevation / 10.0).floor() * 10.0;
+      elevationInterval = maxElevation / 5;
+      elevationInterval = (elevationInterval / 10.0).floor() * 10.0;
+    }
+  }
 
   @override
   AltitudeGraphViewState createState() => new AltitudeGraphViewState();
@@ -74,7 +130,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     super.didUpdateWidget(oldWidget);
 
     // todo 如果当前缩放大于新的最大缩放, 则调整缩放
-    if(_scale > widget.maxScale){
+    if (_scale > widget.maxScale) {
       setState(() {
         _scale = widget.maxScale;
       });
@@ -83,6 +139,8 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
 
   @override
   Widget build(BuildContext context) {
+    print("min = ${widget.minElevation}; max = ${widget.maxElevation}");
+
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -100,10 +158,15 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
                 child: CustomPaint(
                   painter: AltitudePainter(
                     widget.altitudePointList,
-                    7000.0,
-                    2000.0,
+                    widget.maxElevation,
+                    widget.minElevation,
+                    widget.elevationInterval,
                     _scale,
                     _position,
+                    axisLineColor: widget.axisLineColor,
+                    axisTextColor: Colors.black,
+                    gradientColors: const [Color(0x821E88E5), Color(0x0C1E88E5)],
+                    pathColor: const Color(0xFF003c60),
                   ),
                 ),
               ),
@@ -375,34 +438,51 @@ class AltitudePainter extends CustomPainter {
   // ===== Data
   List<AltitudePoint> _altitudePointList;
 
-  double maxVerticalAxisValue;
-  double verticalAxisInterval;
+  double _maxVerticalAxisValue;
+  double _minVerticalAxisValue;
+  double _verticalAxisInterval;
 
   double _scale = 1.0;
   Offset _offset = Offset.zero;
 
   // ===== Paint
+  // 海拔线的画笔
   Paint _linePaint = Paint()
-    ..color = Color(0xFF003c60)
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 
-  Paint _signPointPaint = Paint()..color = Colors.pink;
-
+  // 海拔线填充的画笔
   Paint _gradualPaint = Paint()..style = PaintingStyle.fill;
 
+  // 关键点的画笔
+  Paint _signPointPaint = Paint();
+
+  // 竖轴水平虚线的画笔
   Paint _levelLinePaint = Paint()
-    ..color = Colors.amber
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
+
+  // 文字颜色
+  Color axisTextColor;
+
+  // 海拔线填充的梯度颜色
+  List<Color> gradientColors;
 
   AltitudePainter(
     this._altitudePointList,
-    this.maxVerticalAxisValue,
-    this.verticalAxisInterval,
+    this._maxVerticalAxisValue,
+    this._minVerticalAxisValue,
+    this._verticalAxisInterval,
     this._scale,
-    this._offset,
-  );
+    this._offset, {
+    this.axisTextColor = Colors.black,
+    this.gradientColors = const [Color(0x821E88E5), Color(0x0C1E88E5)],
+    Color pathColor = const Color(0xFF003c60),
+    Color axisLineColor = Colors.amber,
+  }) {
+    _linePaint.color = pathColor;
+    _levelLinePaint.color = axisLineColor;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -444,14 +524,15 @@ class AltitudePainter extends CustomPainter {
   void drawVerticalAxis(Canvas canvas, Size size) {
     var availableHeight = size.height;
 
-    var levelCount = maxVerticalAxisValue / verticalAxisInterval;
+    var levelCount = (_maxVerticalAxisValue - _minVerticalAxisValue) / _verticalAxisInterval;
+    var labelCount = _maxVerticalAxisValue / _verticalAxisInterval;
 
     var interval = availableHeight / levelCount;
 
     canvas.save();
-    for (int i = 0; i < levelCount; i++) {
-      var level = (verticalAxisInterval * (levelCount - i)).toInt();
-      drawVerticalAxisLine(canvas, size, "$level", i * interval);
+    for (int i = 0; i <= levelCount; i++) {
+      var label = (_verticalAxisInterval * (labelCount - i)).toInt();
+      drawVerticalAxisLine(canvas, size, label.toString(), i * interval);
     }
     canvas.restore();
   }
@@ -492,7 +573,7 @@ class AltitudePainter extends CustomPainter {
       text: TextSpan(
         text: text,
         style: TextStyle(
-          color: Colors.black87,
+          color: axisTextColor,
           fontSize: 8.0,
         ),
       ),
@@ -546,7 +627,7 @@ class AltitudePainter extends CustomPainter {
     if (pointList == null || pointList.isEmpty) return;
 
     double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
-    double ratioY = size.height / maxVerticalAxisValue;
+    double ratioY = size.height / _maxVerticalAxisValue;
 
     var firstPoint = pointList.first.point;
     var path = Path();
@@ -601,8 +682,8 @@ class AltitudePainter extends CustomPainter {
     gradualPath.lineTo(gradualPath.getBounds().width, size.height);
     gradualPath.relativeLineTo(-gradualPath.getBounds().width, 0.0);
 
-    _gradualPaint.shader = ui.Gradient.linear(
-        Offset(0.0, 300.0), Offset(0.0, size.height), [Color(0x821E88E5), Color(0x0C1E88E5)]);
+    _gradualPaint.shader =
+        ui.Gradient.linear(Offset(0.0, 300.0), Offset(0.0, size.height), gradientColors);
 
     canvas.save();
     canvas.drawPath(gradualPath, _gradualPaint);
