@@ -46,11 +46,6 @@ class AltitudeGraphView extends StatefulWidget {
   final bool slidingBarVisible;
   final Widget leftSlidingButton;
   final Widget rightSlidingButton;
-  int maxLevel = 0;
-  int minLevel = 0;
-  double maxElevation = 0.0;
-  double minElevation = 0.0;
-  double elevationInterval = 0.0;
 
   AltitudeGraphView(
     this.altitudePointList, {
@@ -62,41 +57,7 @@ class AltitudeGraphView extends StatefulWidget {
     this.slidingBarVisible = true,
     this.leftSlidingButton = const Icon(Icons.chevron_left),
     this.rightSlidingButton = const Icon(Icons.chevron_right),
-  }){
-    if (altitudePointList == null || altitudePointList.isEmpty) return;
-
-    for (AltitudePoint p in altitudePointList) {
-//      p.point = p.point.translate(0.0, -1000.0);
-
-      if (p.point.dy > maxElevation) {
-        maxElevation = p.point.dy;
-      } else if (p.point.dy < minElevation) {
-        minElevation = p.point.dy;
-      }
-      if (p.level > maxLevel) {
-        maxLevel = p.level;
-      } else if (p.level < minLevel) {
-        minLevel = p.level;
-      }
-    }
-
-    if (maxElevation > 1000) {
-      maxElevation = (maxElevation / 1000.0).ceil() * 1000.0;
-      minElevation = (minElevation / 1000.0).floor() * 1000.0;
-      elevationInterval = maxElevation / 5;
-      elevationInterval = (elevationInterval / 1000.0).floor() * 1000.0;
-    } else if (maxElevation > 100) {
-      maxElevation = (maxElevation / 100.0).ceil() * 100.0;
-      minElevation = (minElevation / 100.0).floor() * 100.0;
-      elevationInterval = maxElevation / 5;
-      elevationInterval = (elevationInterval / 100.0).floor() * 100.0;
-    } else if (maxElevation > 10) {
-      maxElevation = (maxElevation / 10.0).ceil() * 10.0;
-      minElevation = (minElevation / 10.0).floor() * 10.0;
-      elevationInterval = maxElevation / 5;
-      elevationInterval = (elevationInterval / 10.0).floor() * 10.0;
-    }
-  }
+  });
 
   @override
   AltitudeGraphViewState createState() => new AltitudeGraphViewState();
@@ -105,6 +66,13 @@ class AltitudeGraphView extends StatefulWidget {
 const double SLIDING_BTN_WIDTH = 30.0;
 
 class AltitudeGraphViewState extends State<AltitudeGraphView> {
+  // 海拔图数据
+  int _maxLevel = 0;
+  int _minLevel = 0;
+  double _maxElevation = 0.0;
+  double _minElevation = 0.0;
+  double _elevationInterval = 0.0;
+
   // 放大/和放大的基点的值. 在动画/手势中会实时变化
   double _scale = 1.0;
   Offset _position = Offset.zero;
@@ -126,8 +94,17 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
   double _lastSlidingBarPosition = 0.0;
 
   @override
+  void initState() {
+    super.initState();
+
+    _initData();
+  }
+
+  @override
   void didUpdateWidget(AltitudeGraphView oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    _initData();
 
     // todo 如果当前缩放大于新的最大缩放, 则调整缩放
     if (_scale > widget.maxScale) {
@@ -137,10 +114,47 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     }
   }
 
+  /// 遍历数据, 取得 最高海拔值, 最低海拔值, 最高Level, 最低Level.
+  /// 根据最高海拔值和最低海拔值计算出纵轴最大值和最小值.
+  _initData() {
+    if (widget.altitudePointList?.isEmpty ?? true) return;
+
+    for (AltitudePoint p in widget.altitudePointList) {
+      if (p.point.dy > _maxElevation) {
+        _maxElevation = p.point.dy;
+      } else if (p.point.dy < _minElevation) {
+        _minElevation = p.point.dy;
+      }
+      if (p.level > _maxLevel) {
+        _maxLevel = p.level;
+      } else if (p.level < _minLevel) {
+        _minLevel = p.level;
+      }
+    }
+
+    if (_maxElevation > 1000) {
+      _maxElevation = (_maxElevation / 1000.0).ceil() * 1000.0;
+      _minElevation = (_minElevation / 1000.0).floor() * 1000.0;
+    } else if (_maxElevation > 100) {
+      _maxElevation = (_maxElevation / 100.0).ceil() * 100.0;
+      _minElevation = (_minElevation / 100.0).floor() * 100.0;
+    } else if (_maxElevation > 10) {
+      _maxElevation = (_maxElevation / 10.0).ceil() * 10.0;
+      _minElevation = (_minElevation / 10.0).floor() * 10.0;
+    }
+
+    _elevationInterval = (_maxElevation - _minElevation) / 5;
+    if (_elevationInterval > 1000) {
+      _elevationInterval = (_elevationInterval / 1000.0).floor() * 1000.0;
+    } else if (_elevationInterval > 100) {
+      _elevationInterval = (_elevationInterval / 100.0).floor() * 100.0;
+    } else if (_elevationInterval > 10) {
+      _elevationInterval = (_elevationInterval / 10.0).floor() * 10.0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    print("min = ${widget.minElevation}; max = ${widget.maxElevation}");
-
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -158,9 +172,9 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
                 child: CustomPaint(
                   painter: AltitudePainter(
                     widget.altitudePointList,
-                    widget.maxElevation,
-                    widget.minElevation,
-                    widget.elevationInterval,
+                    _maxElevation,
+                    _minElevation,
+                    _elevationInterval,
                     _scale,
                     _position,
                     axisLineColor: widget.axisLineColor,
@@ -185,7 +199,8 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
                   child: CustomPaint(
                     painter: AltitudeThumbPainter(
                       widget.altitudePointList,
-                      7000.0,
+                      _maxElevation,
+                      _minElevation,
                     ),
                   ),
                 ),
@@ -626,14 +641,18 @@ class AltitudePainter extends CustomPainter {
     var pointList = _altitudePointList;
     if (pointList == null || pointList.isEmpty) return;
 
+    // 将原点挪到以纵坐标的0点所在的位置, 向下为负, 向上为正. 这样可以绘制出负海拔的区域
+    double ratioAtAll = _minVerticalAxisValue / (_maxVerticalAxisValue - _minVerticalAxisValue);
+    double h = size.height + ratioAtAll * size.height;
+
     double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
-    double ratioY = size.height / _maxVerticalAxisValue;
+    double ratioY = h / _maxVerticalAxisValue;
 
     var firstPoint = pointList.first.point;
     var path = Path();
-    path.moveTo(firstPoint.dx * ratioX, size.height - firstPoint.dy * ratioY);
+    path.moveTo(firstPoint.dx * ratioX, h - firstPoint.dy * ratioY);
     for (var p in pointList) {
-      path.lineTo(p.point.dx * ratioX, size.height - p.point.dy * ratioY);
+      path.lineTo(p.point.dx * ratioX, h - p.point.dy * ratioY);
     }
 
     // 绘制线条下面的渐变部分
@@ -651,8 +670,7 @@ class AltitudePainter extends CustomPainter {
 
       // 绘制关键点
       _signPointPaint.color = p.color;
-      canvas.drawCircle(
-          Offset(p.point.dx * ratioX, size.height - p.point.dy * ratioY), 2.0, _signPointPaint);
+      canvas.drawCircle(Offset(p.point.dx * ratioX, h - p.point.dy * ratioY), 2.0, _signPointPaint);
 
       var tp = p.textPainter;
       var left = p.point.dx * ratioX - tp.width / 2;
@@ -661,16 +679,16 @@ class AltitudePainter extends CustomPainter {
       canvas.drawRRect(
           RRect.fromLTRBXY(
             left - 2,
-            size.height - p.point.dy * ratioY - tp.height - 8,
+            h - p.point.dy * ratioY - tp.height - 8,
             left + tp.width + 2,
-            size.height - p.point.dy * ratioY - 4,
+            h - p.point.dy * ratioY - 4,
             tp.width / 2.0,
             tp.width / 2.0,
           ),
           _signPointPaint);
 
       // 绘制文字
-      tp.paint(canvas, Offset(left, size.height - p.point.dy * ratioY - tp.height - 6));
+      tp.paint(canvas, Offset(left, h - p.point.dy * ratioY - tp.height - 6));
     }
 
     canvas.restore();
@@ -700,7 +718,8 @@ class AltitudeThumbPainter extends CustomPainter {
   // ===== Data
   List<AltitudePoint> _altitudePointList;
 
-  double maxVerticalAxisValue;
+  double _maxVerticalAxisValue;
+  double _minVerticalAxisValue;
 
   // ===== Paint
   Paint _linePaint = Paint()
@@ -712,7 +731,11 @@ class AltitudeThumbPainter extends CustomPainter {
     ..style = PaintingStyle.fill
     ..color = Colors.grey.shade300;
 
-  AltitudeThumbPainter(this._altitudePointList, this.maxVerticalAxisValue);
+  AltitudeThumbPainter(
+    this._altitudePointList,
+    this._maxVerticalAxisValue,
+    this._minVerticalAxisValue,
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -731,14 +754,18 @@ class AltitudeThumbPainter extends CustomPainter {
     var pointList = _altitudePointList;
     if (pointList == null || pointList.isEmpty) return;
 
+    // 将原点挪到以纵坐标的0点所在的位置, 向下为负, 向上为正. 这样可以绘制出负海拔的区域
+    double ratioAtAll = _minVerticalAxisValue / (_maxVerticalAxisValue - _minVerticalAxisValue);
+    double h = size.height + ratioAtAll * size.height;
+
     double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
-    double ratioY = size.height / maxVerticalAxisValue;
+    double ratioY = h / _maxVerticalAxisValue;
 
     var firstPoint = pointList.first.point;
     var path = Path();
-    path.moveTo(firstPoint.dx * ratioX, size.height - firstPoint.dy * ratioY);
+    path.moveTo(firstPoint.dx * ratioX, h - firstPoint.dy * ratioY);
     for (var p in pointList) {
-      path.lineTo(p.point.dx * ratioX, size.height - p.point.dy * ratioY);
+      path.lineTo(p.point.dx * ratioX, h - p.point.dy * ratioY);
     }
 
     // 绘制线条下面的渐变部分
