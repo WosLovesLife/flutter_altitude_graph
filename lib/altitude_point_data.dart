@@ -46,7 +46,7 @@ Future<List<AltitudePoint>> getAltitudePointList() {
           color = CITY;
           break;
         case 'MOUNTAIN':
-          level = 2;
+          level = 3;
           color = MOUNTAIN;
           break;
         case 'COUNTY':
@@ -58,12 +58,16 @@ Future<List<AltitudePoint>> getAltitudePointList() {
           color = TOWN;
           break;
         case 'VILLAGE':
-          level = 1;
+          level = 2;
           color = VILLAGE;
           break;
         case 'TUNNEL':
           level = 2;
           color = TUNNEL;
+          break;
+        case 'BRIDGE':
+          level = 2;
+          color = BRIDGE;
           break;
         case 'CHECK_POINT':
           level = 1;
@@ -74,12 +78,8 @@ Future<List<AltitudePoint>> getAltitudePointList() {
           color = CAMP_SPOT;
           break;
         case 'SCENIC_SPOT':
-          level = 2;
+          level = 1;
           color = SCENIC_SPOT;
-          break;
-        case 'BRIDGE':
-          level = 2;
-          color = BRIDGE;
           break;
         default:
           level = 0;

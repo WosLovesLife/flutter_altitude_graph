@@ -176,7 +176,10 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
                     _minElevation,
                     _elevationInterval,
                     _scale,
+                    widget.maxScale,
                     _position,
+                    maxLevel: _maxLevel,
+                    minLevel: _minLevel,
                     axisLineColor: widget.axisLineColor,
                     axisTextColor: Colors.black,
                     gradientColors: const [Color(0x821E88E5), Color(0x0C1E88E5)],
@@ -453,11 +456,15 @@ class AltitudePainter extends CustomPainter {
   // ===== Data
   List<AltitudePoint> _altitudePointList;
 
+  int maxLevel;
+  int minLevel;
+
   double _maxVerticalAxisValue;
   double _minVerticalAxisValue;
   double _verticalAxisInterval;
 
   double _scale = 1.0;
+  double _maxScale = 1.0;
   Offset _offset = Offset.zero;
 
   // ===== Paint
@@ -489,7 +496,10 @@ class AltitudePainter extends CustomPainter {
     this._minVerticalAxisValue,
     this._verticalAxisInterval,
     this._scale,
+    this._maxScale,
     this._offset, {
+    this.maxLevel = 0,
+    this.minLevel = 0,
     this.axisTextColor = Colors.black,
     this.gradientColors = const [Color(0x821E88E5), Color(0x0C1E88E5)],
     Color pathColor = const Color(0xFF003c60),
@@ -663,35 +673,7 @@ class AltitudePainter extends CustomPainter {
     canvas.drawPath(path, _linePaint);
     canvas.restore();
 
-    // 绘制关键点及文字
-    canvas.save();
-    for (var p in pointList) {
-      if (p.name == null || p.name.isEmpty) continue;
-
-      // 绘制关键点
-      _signPointPaint.color = p.color;
-      canvas.drawCircle(Offset(p.point.dx * ratioX, h - p.point.dy * ratioY), 2.0, _signPointPaint);
-
-      var tp = p.textPainter;
-      var left = p.point.dx * ratioX - tp.width / 2;
-
-      // 绘制文字的背景框
-      canvas.drawRRect(
-          RRect.fromLTRBXY(
-            left - 2,
-            h - p.point.dy * ratioY - tp.height - 8,
-            left + tp.width + 2,
-            h - p.point.dy * ratioY - 4,
-            tp.width / 2.0,
-            tp.width / 2.0,
-          ),
-          _signPointPaint);
-
-      // 绘制文字
-      tp.paint(canvas, Offset(left, h - p.point.dy * ratioY - tp.height - 6));
-    }
-
-    canvas.restore();
+    drawLabel(canvas, h, pointList, ratioX, ratioY);
   }
 
   void drawGradualShadow(Path path, Size size, Canvas canvas) {
@@ -705,6 +687,74 @@ class AltitudePainter extends CustomPainter {
 
     canvas.save();
     canvas.drawPath(gradualPath, _gradualPaint);
+    canvas.restore();
+  }
+
+  void drawLabel(
+      Canvas canvas, double h, List<AltitudePoint> pointList, double ratioX, double ratioY) {
+    // 绘制关键点及文字
+    canvas.save();
+    canvas.translate(0.0, h);
+    double ratioInScaling = _scale / _maxScale * 10.0;
+    for (var p in pointList) {
+      if (p.name == null || p.name.isEmpty) continue;
+
+      // maxLevel
+      double levelLimit = (maxLevel - minLevel) - ratioInScaling * (maxLevel - minLevel);
+      if (p.level < levelLimit) continue;
+
+      double labelScale = p.level - levelLimit;
+      labelScale = (labelScale * 3.0).clamp(0.0, 1.0);
+
+      // 由于我们不能直接缩放文字的字号, 所以我们采用缩放canvas的方式
+      // canvas缩小后, 面积会增大, 绘制的位置就会变化.
+      // 为了让绘制的点还是在原来的位置, 我们将 ratioX/Y 的值放大 n 倍(n取决于我们将canvas缩小了多少)
+      // 举例: 默认canvas是300 * 500, labelScale=0.5时canvas=600*1000.
+      // 因此我们将 ratioX/Y 放大2倍 (通过 1/0.5 得到), 这样计算偏移量时就能对应上海拔路径的点了.
+      canvas.save();
+      canvas.scale(labelScale);
+      double scale4Offset = (1.0 / labelScale);
+      double scaledRatioX = ratioX * scale4Offset;
+      double scaledRatioY = ratioY * scale4Offset;
+
+      // ==== 绘制关键点
+      _signPointPaint.color = p.color;
+      canvas.drawCircle(
+          Offset(p.point.dx * scaledRatioX, -p.point.dy * scaledRatioY), 2.0, _signPointPaint);
+
+      // ==== 绘制文字及背景
+      // 将海拔的值换算成在屏幕上的值
+      double yInScreen = p.point.dy * scaledRatioY;
+
+      var tp = p.textPainter;
+      var left = p.point.dx * scaledRatioX - tp.width / 2;
+
+      // 如果label接近顶端, 调换方向, 避免label看不见
+      double bgTop = yInScreen + tp.height + 8;
+      double bgBottom = yInScreen + 4;
+      double textTop = yInScreen + tp.height + 6;
+      if (h * scale4Offset - bgTop < 0) {
+        bgTop = yInScreen - tp.height - 8;
+        bgBottom = yInScreen - 4;
+        textTop = yInScreen - 6;
+      }
+      // 绘制文字的背景框
+      canvas.drawRRect(
+          RRect.fromLTRBXY(
+            left - 2,
+            -bgTop,
+            left + tp.width + 2,
+            -bgBottom,
+            tp.width / 2.0,
+            tp.width / 2.0,
+          ),
+          _signPointPaint);
+
+      // 绘制文字
+      tp.paint(canvas, Offset(left, -textTop));
+      canvas.restore();
+    }
+
     canvas.restore();
   }
 
