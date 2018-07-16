@@ -65,7 +65,7 @@ class AltitudeGraphView extends StatefulWidget {
 
 const double SLIDING_BTN_WIDTH = 30.0;
 
-class AltitudeGraphViewState extends State<AltitudeGraphView> {
+class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerProviderStateMixin {
   // 海拔图数据
   int _maxLevel = 0;
   int _minLevel = 0;
@@ -93,11 +93,20 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
   double _slidingBarRight = SLIDING_BTN_WIDTH;
   double _lastSlidingBarPosition = 0.0;
 
+  AnimationController controller;
+  CurvedAnimation curvedAnimation;
+
   @override
   void initState() {
     super.initState();
 
+    controller = AnimationController(vsync: this, duration: Duration(seconds: 3));
+    curvedAnimation = CurvedAnimation(parent: controller, curve: const ElasticOutCurve(1.0))
+      ..addListener(() => setState(() {}));
+
     _initData();
+
+    controller.forward();
   }
 
   @override
@@ -112,6 +121,10 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
         _scale = widget.maxScale;
       });
     }
+
+    controller.reverse().then((_) {
+      controller.forward();
+    });
   }
 
   /// 遍历数据, 取得 最高海拔值, 最低海拔值, 最高Level, 最低Level.
@@ -178,6 +191,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
                     _scale,
                     widget.maxScale,
                     _position,
+                    animatedValue: curvedAnimation.value,
                     maxLevel: _maxLevel,
                     minLevel: _minLevel,
                     axisLineColor: widget.axisLineColor,
@@ -467,6 +481,8 @@ class AltitudePainter extends CustomPainter {
   double _maxScale = 1.0;
   Offset _offset = Offset.zero;
 
+  double animatedValue;
+
   // ===== Paint
   // 海拔线的画笔
   Paint _linePaint = Paint()
@@ -498,6 +514,7 @@ class AltitudePainter extends CustomPainter {
     this._scale,
     this._maxScale,
     this._offset, {
+    this.animatedValue = 1.0,
     this.maxLevel = 0,
     this.minLevel = 0,
     this.axisTextColor = Colors.black,
@@ -660,9 +677,9 @@ class AltitudePainter extends CustomPainter {
 
     var firstPoint = pointList.first.point;
     var path = Path();
-    path.moveTo(firstPoint.dx * ratioX, h - firstPoint.dy * ratioY);
+    path.moveTo(firstPoint.dx * ratioX, h - firstPoint.dy * ratioY * animatedValue);
     for (var p in pointList) {
-      path.lineTo(p.point.dx * ratioX, h - p.point.dy * ratioY);
+      path.lineTo(p.point.dx * ratioX, h - p.point.dy * ratioY * animatedValue);
     }
 
     // 绘制线条下面的渐变部分
@@ -717,14 +734,14 @@ class AltitudePainter extends CustomPainter {
       double scaledRatioX = ratioX * scale4Offset;
       double scaledRatioY = ratioY * scale4Offset;
 
+      // 将海拔的值换算成在屏幕上的值
+      double yInScreen = p.point.dy * scaledRatioY * animatedValue;
+
       // ==== 绘制关键点
       _signPointPaint.color = p.color;
-      canvas.drawCircle(
-          Offset(p.point.dx * scaledRatioX, -p.point.dy * scaledRatioY), 2.0, _signPointPaint);
+      canvas.drawCircle(Offset(p.point.dx * scaledRatioX, -yInScreen), 2.0, _signPointPaint);
 
       // ==== 绘制文字及背景
-      // 将海拔的值换算成在屏幕上的值
-      double yInScreen = p.point.dy * scaledRatioY;
 
       var tp = p.textPainter;
       var left = p.point.dx * scaledRatioX - tp.width / 2;
