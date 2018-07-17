@@ -25,13 +25,21 @@ class MyHomePage extends StatefulWidget {
   _MyHomePageState createState() => new _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateMixin {
   List<AltitudePoint> _altitudePointList;
   double _maxScale = 1.0;
+
+  AnimationController controller;
+  CurvedAnimation _elasticAnimation;
 
   @override
   void initState() {
     super.initState();
+
+    controller = AnimationController(vsync: this, duration: Duration(seconds: 3));
+
+    _elasticAnimation = CurvedAnimation(parent: controller, curve: const ElasticOutCurve(1.0));
+
     getAltitudePointList().then((list) {
       setState(() {
         _altitudePointList = list;
@@ -42,7 +50,23 @@ class _MyHomePageState extends State<MyHomePage> {
         } else {
           _maxScale = 1.0;
         }
+
+        controller.forward();
       });
+    });
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  changeData() {
+    controller.duration = Duration(seconds: 1);
+    controller.reverse().then((_) {
+      controller.duration = Duration(seconds: 3);
+      controller.forward();
     });
   }
 
@@ -51,8 +75,25 @@ class _MyHomePageState extends State<MyHomePage> {
     return new Scaffold(
       appBar: new AppBar(
         title: new Text("Altitude Graph"),
+        actions: <Widget>[
+          IconButton(
+            icon: Icon(
+              Icons.refresh,
+              color: Colors.white,
+            ),
+            onPressed: () {
+              setState(() {
+                changeData();
+              });
+            },
+          ),
+        ],
       ),
-      body: AltitudeGraphView(_altitudePointList, maxScale: _maxScale,),
+      body: AltitudeGraphView(
+        _altitudePointList,
+        maxScale: _maxScale,
+        animation: _elasticAnimation,
+      ),
     );
   }
 }

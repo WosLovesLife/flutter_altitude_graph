@@ -46,6 +46,7 @@ class AltitudeGraphView extends StatefulWidget {
   final bool slidingBarVisible;
   final Widget leftSlidingButton;
   final Widget rightSlidingButton;
+  final Animation<double> animation;
 
   AltitudeGraphView(
     this.altitudePointList, {
@@ -57,6 +58,7 @@ class AltitudeGraphView extends StatefulWidget {
     this.slidingBarVisible = true,
     this.leftSlidingButton = const Icon(Icons.chevron_left),
     this.rightSlidingButton = const Icon(Icons.chevron_right),
+    this.animation,
   });
 
   @override
@@ -93,20 +95,13 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
   double _slidingBarRight = SLIDING_BTN_WIDTH;
   double _lastSlidingBarPosition = 0.0;
 
-  AnimationController controller;
-  CurvedAnimation curvedAnimation;
-
   @override
   void initState() {
     super.initState();
 
-    controller = AnimationController(vsync: this, duration: Duration(seconds: 3));
-    curvedAnimation = CurvedAnimation(parent: controller, curve: const ElasticOutCurve(1.0))
-      ..addListener(() => setState(() {}));
-
     _initData();
 
-    controller.forward();
+    widget.animation?.addListener(_refresh);
   }
 
   @override
@@ -122,9 +117,12 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       });
     }
 
-    controller.reverse().then((_) {
-      controller.forward();
-    });
+    oldWidget.animation.removeListener(_refresh);
+    widget.animation?.addListener(_refresh);
+  }
+
+  _refresh() {
+    setState(() {});
   }
 
   /// 遍历数据, 取得 最高海拔值, 最低海拔值, 最高Level, 最低Level.
@@ -191,7 +189,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
                     _scale,
                     widget.maxScale,
                     _position,
-                    animatedValue: curvedAnimation.value,
+                    animatedValue: widget.animation?.value ?? 1,
                     maxLevel: _maxLevel,
                     minLevel: _minLevel,
                     axisLineColor: widget.axisLineColor,
@@ -490,7 +488,9 @@ class AltitudePainter extends CustomPainter {
     ..style = PaintingStyle.stroke;
 
   // 海拔线填充的画笔
-  Paint _gradualPaint = Paint()..style = PaintingStyle.fill;
+  Paint _gradualPaint = Paint()
+    ..isAntiAlias = false
+    ..style = PaintingStyle.fill;
 
   // 关键点的画笔
   Paint _signPointPaint = Paint();
@@ -498,6 +498,7 @@ class AltitudePainter extends CustomPainter {
   // 竖轴水平虚线的画笔
   Paint _levelLinePaint = Paint()
     ..strokeWidth = 1.0
+    ..isAntiAlias = false
     ..style = PaintingStyle.stroke;
 
   // 文字颜色
@@ -791,11 +792,13 @@ class AltitudeThumbPainter extends CustomPainter {
   // ===== Paint
   Paint _linePaint = Paint()
     ..color = Colors.grey
+    ..isAntiAlias = false
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 
   Paint _gradualPaint = Paint()
     ..style = PaintingStyle.fill
+    ..isAntiAlias = false
     ..color = Colors.grey.shade300;
 
   AltitudeThumbPainter(
