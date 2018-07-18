@@ -19,9 +19,9 @@ const Color BRIDGE = Colors.green;
 const Color GAS_STATION = Colors.lightGreen;
 const Color OTHERS = Colors.deepPurpleAccent;
 
-Future<List<AltitudePoint>> getAltitudePointList() {
+Future<List<AltitudePoint>> parseGeographyData(String assetsPath) {
   return rootBundle
-      .loadString("assets/raw/CHUANZANGNAN.json", cache: false)
+      .loadString(assetsPath, cache: false)
       .then((fileContents) => json.decode(fileContents))
       .then((jsonData) {
     List<AltitudePoint> list = List();

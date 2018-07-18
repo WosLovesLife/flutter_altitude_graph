@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -25,9 +26,17 @@ class MyHomePage extends StatefulWidget {
   _MyHomePageState createState() => new _MyHomePageState();
 }
 
+const List<String> paths = [
+  "assets/raw/HUANQINGHAIHU.json",
+  "assets/raw/CHUANZANGNAN.json",
+];
+
 class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateMixin {
   List<AltitudePoint> _altitudePointList;
   double _maxScale = 1.0;
+  int dataIndex = 0;
+
+  bool animating = false;
 
   AnimationController controller;
   CurvedAnimation _elasticAnimation;
@@ -40,17 +49,8 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
 
     _elasticAnimation = CurvedAnimation(parent: controller, curve: const ElasticOutCurve(1.0));
 
-    getAltitudePointList().then((list) {
+    changeData().then((list) {
       setState(() {
-        _altitudePointList = list;
-
-        double miters = list.last?.point?.dx ?? 0.0;
-        if (miters > 0) {
-          _maxScale = max(miters / 50.0, 1.0);
-        } else {
-          _maxScale = 1.0;
-        }
-
         controller.forward();
       });
     });
@@ -62,11 +62,35 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  changeData() {
+  Future<List<AltitudePoint>> changeData() {
+    int a = dataIndex++;
+    return parseGeographyData(paths[a % paths.length]).then((list) {
+      _altitudePointList = list;
+
+      double miters = list.last?.point?.dx ?? 0.0;
+      if (miters > 0) {
+        _maxScale = max(miters / 50.0, 1.0);
+      } else {
+        _maxScale = 1.0;
+      }
+      return list;
+    });
+  }
+
+  _onRefreshBtnPress() {
+    if (animating) return;
+    animating = true;
+
+    var changeDataFuture = changeData();
     controller.duration = Duration(seconds: 1);
     controller.reverse().then((_) {
-      controller.duration = Duration(seconds: 3);
-      controller.forward();
+      changeDataFuture.then((_) {
+        setState(() {
+          controller.duration = Duration(seconds: 3);
+          controller.forward();
+          animating = false;
+        });
+      });
     });
   }
 
@@ -81,11 +105,7 @@ class _MyHomePageState extends State<MyHomePage> with SingleTickerProviderStateM
               Icons.refresh,
               color: Colors.white,
             ),
-            onPressed: () {
-              setState(() {
-                changeData();
-              });
-            },
+            onPressed: _onRefreshBtnPress,
           ),
         ],
       ),
