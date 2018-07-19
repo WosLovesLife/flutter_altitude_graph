@@ -3,6 +3,17 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 
+const double SLIDING_BTN_WIDTH = 30.0;
+const Color kSlidingBtnColor = Color(0x2268838B); // Colors.black54.withAlpha(100)
+const Color kSlidingBtnScrimColor = Color(0x2268838B); // Colors.black12
+const Color kAltitudePathColor = Color(0xFF003c60);
+const List<Color> kAltitudeGradientColors = [Color(0x821E88E5), Color(0x0C1E88E5)];
+const Color kAxisTextColor = Colors.black;
+const Color kVerticalAxisDottedLineColor = Colors.amber;
+const Color kLabelTextColor = Colors.white;
+const Color kAltitudeThumbnailPathColor = Colors.grey;
+const Color kAltitudeThumbnailGradualColor = Color(0xFFE0EFFB);
+
 class AltitudePoint {
   String name;
 
@@ -30,7 +41,7 @@ class AltitudePoint {
       text: TextSpan(
         text: splitMapJoin,
         style: TextStyle(
-          color: Colors.white,
+          color: kLabelTextColor,
           fontSize: 8.0,
         ),
       ),
@@ -46,20 +57,16 @@ class AltitudeGraphView extends StatefulWidget {
   final Color pathColor;
   final List<Color> gradientColors;
   final bool slidingBarVisible;
-  final Widget leftSlidingButton;
-  final Widget rightSlidingButton;
   final Animation<double> animation;
 
   AltitudeGraphView(
     this.altitudePointList, {
     this.maxScale = 1.0,
-    this.axisLineColor = Colors.amber,
-    this.axisTextColor = Colors.black,
-    this.pathColor = Colors.amber,
-    this.gradientColors = const [Color(0x821E88E5), Color(0x0C1E88E5)],
+    this.axisLineColor = kVerticalAxisDottedLineColor,
+    this.axisTextColor = kAxisTextColor,
+    this.pathColor = kAltitudePathColor,
+    this.gradientColors = kAltitudeGradientColors,
     this.slidingBarVisible = true,
-    this.leftSlidingButton = const Icon(Icons.chevron_left),
-    this.rightSlidingButton = const Icon(Icons.chevron_right),
     this.animation,
   });
 
@@ -67,15 +74,15 @@ class AltitudeGraphView extends StatefulWidget {
   AltitudeGraphViewState createState() => new AltitudeGraphViewState();
 }
 
-const double SLIDING_BTN_WIDTH = 30.0;
-
 class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerProviderStateMixin {
   // 海拔图数据
   int _maxLevel = 0;
   int _minLevel = 0;
-  double _maxElevation = 0.0;
-  double _minElevation = 0.0;
-  double _elevationInterval = 0.0;
+  double _maxAltitude = 0.0;
+  double _minAltitude = 0.0;
+  double _maxVerticalAxisValue = 0.0;
+  double _minVerticalAxisValue = 0.0;
+  double _verticalAxisInterval = 0.0;
 
   // 放大/和放大的基点的值. 在动画/手势中会实时变化
   double _scale = 1.0;
@@ -106,13 +113,8 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
 
     _initData();
 
-    widget.animation?.addListener(_refresh);
-    widget.animation?.addStatusListener((AnimationStatus s) {
-      status = s;
-      if (s == AnimationStatus.reverse) {
-        _lastScale4ReverseAnimation = _scale;
-      }
-    });
+    widget.animation?.addListener(_onAnimationUpdated);
+    widget.animation?.addStatusListener(_onAnimationStatusChanged);
   }
 
   @override
@@ -121,54 +123,41 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
 
     _initData();
 
-    oldWidget.animation?.removeListener(_refresh);
-    widget.animation?.addListener(_refresh);
+    oldWidget.animation?.removeListener(_onAnimationUpdated);
+    widget.animation?.addListener(_onAnimationUpdated);
+    oldWidget.animation?.removeStatusListener(_onAnimationStatusChanged);
+    widget.animation?.addStatusListener(_onAnimationStatusChanged);
 
-    // todo 如果当前缩放大于新的最大缩放, 则调整缩放
-    setState(() {
-      _scale = 1.0;
-      _position = Offset(0.0, 0.0);
-      _leftSlidingBtnLeft = 0.0;
-      _rightSlidingBtnRight = 0.0;
-      _slidingBarLeft = SLIDING_BTN_WIDTH;
-      _slidingBarRight = SLIDING_BTN_WIDTH;
-    });
+    // 如果当前缩放大于新的最大缩放, 则调整缩放
+    if (_scale != 1.0) {
+      setState(() {
+        _scale = 1.0;
+        _position = Offset(0.0, 0.0);
+        _leftSlidingBtnLeft = 0.0;
+        _rightSlidingBtnRight = 0.0;
+        _slidingBarLeft = SLIDING_BTN_WIDTH;
+        _slidingBarRight = SLIDING_BTN_WIDTH;
+      });
+    }
   }
 
-  _refresh() {
+  _onAnimationStatusChanged(AnimationStatus s) {
+    status = s;
+    if (s == AnimationStatus.reverse) {
+      _lastScale4ReverseAnimation = _scale;
+    }
+  }
+
+  _onAnimationUpdated() {
     if (status != AnimationStatus.reverse) {
       setState(() {});
       return;
     }
 
-    var widgetWidth = context.size.width;
-
     var value = widget.animation?.value?.clamp(0.0, 1.0) ?? 1.0;
     var newScale = (_lastScale4ReverseAnimation - 1.0) * value + 1.0;
 
-    double left = _calculatePosition(newScale, widgetWidth / 2);
-
-    // 将x范围限制图表宽度内
-    double newPositionX = left.clamp((newScale - 1) * -widgetWidth, 0.0);
-    var newPosition = Offset(newPositionX, 0.0);
-
-    // 根据缩放,同步缩略滑钮的状态
-    var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
-    double lOffsetX = -newPositionX / newScale;
-    double rOffsetX = ((newScale - 1) * widgetWidth + newPositionX) / newScale;
-
-    double r = maxViewportWidth / widgetWidth;
-    lOffsetX *= r;
-    rOffsetX *= r;
-
-    setState(() {
-      _scale = newScale;
-      _position = newPosition;
-      _leftSlidingBtnLeft = lOffsetX;
-      _rightSlidingBtnRight = rOffsetX;
-      _slidingBarLeft = lOffsetX + SLIDING_BTN_WIDTH;
-      _slidingBarRight = rOffsetX + SLIDING_BTN_WIDTH;
-    });
+    _updateScaleAndScrolling(newScale, context.size.width / 2);
   }
 
   /// 遍历数据, 取得 最高海拔值, 最低海拔值, 最高Level, 最低Level.
@@ -177,13 +166,13 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
     if (widget.altitudePointList?.isEmpty ?? true) return;
 
     var firstPoint = widget.altitudePointList.first.point;
-    _maxElevation = firstPoint.dy;
-    _minElevation = firstPoint.dy;
+    _maxAltitude = firstPoint.dy;
+    _minAltitude = firstPoint.dy;
     for (AltitudePoint p in widget.altitudePointList) {
-      if (p.point.dy > _maxElevation) {
-        _maxElevation = p.point.dy;
-      } else if (p.point.dy < _minElevation) {
-        _minElevation = p.point.dy;
+      if (p.point.dy > _maxAltitude) {
+        _maxAltitude = p.point.dy;
+      } else if (p.point.dy < _minAltitude) {
+        _minAltitude = p.point.dy;
       }
       if (p.level > _maxLevel) {
         _maxLevel = p.level;
@@ -192,31 +181,38 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       }
     }
 
-    var absMaxElevation = _maxElevation.abs();
-    if (absMaxElevation > 1000) {
-      _maxElevation = (_maxElevation / 1000.0).ceil() * 1000.0;
-      _minElevation = (_minElevation / 1000.0).floor() * 1000.0;
-    } else if (absMaxElevation > 100) {
-      _maxElevation = (_maxElevation / 100.0).ceil() * 100.0;
-      _minElevation = (_minElevation / 100.0).floor() * 100.0;
-    } else if (absMaxElevation > 10) {
-      _maxElevation = (_maxElevation / 10.0).ceil() * 10.0;
-      _minElevation = (_minElevation / 10.0).floor() * 10.0;
+    var absMaxAltitude = _maxAltitude.abs();
+    if (absMaxAltitude > 1000) {
+      _maxVerticalAxisValue = (_maxAltitude / 1000.0).ceil() * 1000.0;
+      _minVerticalAxisValue = (_minAltitude / 1000.0).floor() * 1000.0;
+    } else if (absMaxAltitude > 100) {
+      _maxVerticalAxisValue = (_maxAltitude / 100.0).ceil() * 100.0;
+      _minVerticalAxisValue = (_minAltitude / 100.0).floor() * 100.0;
+    } else if (absMaxAltitude > 10) {
+      _maxVerticalAxisValue = (_maxAltitude / 10.0).ceil() * 10.0;
+      _minVerticalAxisValue = (_minAltitude / 10.0).floor() * 10.0;
     }
 
-    _elevationInterval = (_maxElevation - _minElevation) / 5;
-    var absElevationInterval = _elevationInterval.abs();
-    if (absElevationInterval > 1000) {
-      _elevationInterval = (_elevationInterval / 1000.0).floor() * 1000.0;
-    } else if (absElevationInterval > 100) {
-      _elevationInterval = (_elevationInterval / 100.0).floor() * 100.0;
-    } else if (absElevationInterval > 10) {
-      _elevationInterval = (_elevationInterval / 10.0).floor() * 10.0;
+    _verticalAxisInterval = (_maxVerticalAxisValue - _minVerticalAxisValue) / 5;
+    var absVerticalAxisInterval = _verticalAxisInterval.abs();
+    if (absVerticalAxisInterval > 1000) {
+      _verticalAxisInterval = (_verticalAxisInterval / 1000.0).floor() * 1000.0;
+    } else if (absVerticalAxisInterval > 100) {
+      _verticalAxisInterval = (_verticalAxisInterval / 100.0).floor() * 100.0;
+    } else if (absVerticalAxisInterval > 10) {
+      _verticalAxisInterval = (_verticalAxisInterval / 10.0).floor() * 10.0;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    Widget thumbnailController;
+    if (widget.slidingBarVisible) {
+      thumbnailController = _buildThumbController();
+    } else {
+      thumbnailController = Wrap();
+    }
+
     return Container(
       width: double.infinity,
       height: double.infinity,
@@ -234,9 +230,11 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
                 child: CustomPaint(
                   painter: AltitudePainter(
                     widget.altitudePointList,
-                    _maxElevation,
-                    _minElevation,
-                    _elevationInterval,
+                    _maxAltitude,
+                    _minAltitude,
+                    _maxVerticalAxisValue,
+                    _minVerticalAxisValue,
+                    _verticalAxisInterval,
                     _scale,
                     widget.maxScale,
                     _position,
@@ -244,84 +242,96 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
                     maxLevel: _maxLevel,
                     minLevel: _minLevel,
                     axisLineColor: widget.axisLineColor,
-                    axisTextColor: Colors.black,
-                    gradientColors: const [Color(0x821E88E5), Color(0x0C1E88E5)],
-                    pathColor: const Color(0xFF003c60),
+                    axisTextColor: widget.axisTextColor,
+                    gradientColors: widget.gradientColors,
+                    pathColor: widget.pathColor,
                   ),
                 ),
               ),
             ),
           ),
+          thumbnailController,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildThumbController() {
+    return Container(
+      width: double.infinity,
+      height: 48.0,
+      child: Stack(
+        children: <Widget>[
+          // the divider on the top
+          Divider(
+            height: 1.0,
+            color: kSlidingBtnScrimColor,
+          ),
+          // the thumbnail graph of altitude graph
           Container(
             width: double.infinity,
-            height: 48.0,
-            decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.black26))),
-            child: Stack(
-              children: <Widget>[
-                Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  padding: EdgeInsets.only(left: SLIDING_BTN_WIDTH, right: SLIDING_BTN_WIDTH),
-                  child: CustomPaint(
-                    painter: AltitudeThumbPainter(
-                      widget.altitudePointList,
-                      _maxElevation,
-                      _minElevation,
-                      animatedValue: widget.animation?.value ?? 1.0,
-                    ),
-                  ),
-                ),
-                Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  margin: EdgeInsets.only(left: _slidingBarLeft, right: _slidingBarRight),
-                  child: GestureDetector(
-                    onHorizontalDragStart: _onSlidingBarHorizontalDragStart,
-                    onHorizontalDragUpdate: _onSlidingBarHorizontalDragUpdate,
-                    onHorizontalDragEnd: _onSlidingBarHorizontalDragEnd,
-                  ),
-                ),
-                Container(
-                  width: SLIDING_BTN_WIDTH + _leftSlidingBtnLeft,
-                  height: double.infinity,
-                  padding: EdgeInsets.only(left: _leftSlidingBtnLeft),
-                  color: Colors.black12,
-                  child: GestureDetector(
-                    onHorizontalDragStart: _onLBHorizontalDragDown,
-                    onHorizontalDragUpdate: _onLBHorizontalDragUpdate,
-                    onHorizontalDragEnd: _onLBHorizontalDragEnd,
-                    child: Container(
-                      height: double.infinity,
-                      width: SLIDING_BTN_WIDTH,
-                      color: Colors.black54.withAlpha(100),
-                      child: Icon(Icons.chevron_left),
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Container(
-                    width: SLIDING_BTN_WIDTH + _rightSlidingBtnRight,
-                    padding: EdgeInsets.only(right: _rightSlidingBtnRight),
-                    height: double.infinity,
-                    color: Colors.black12,
-                    alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      onHorizontalDragStart: _onRBHorizontalDragDown,
-                      onHorizontalDragUpdate: _onRBHorizontalDragUpdate,
-                      onHorizontalDragEnd: _onRBHorizontalDragEnd,
-                      child: Container(
-                        height: double.infinity,
-                        width: SLIDING_BTN_WIDTH,
-                        color: Colors.black54.withAlpha(100),
-                        child: Icon(Icons.chevron_right),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            height: double.infinity,
+            padding: EdgeInsets.only(left: SLIDING_BTN_WIDTH, right: SLIDING_BTN_WIDTH),
+            child: CustomPaint(
+              painter: AltitudeThumbnailPainter(
+                widget.altitudePointList,
+                _maxAltitude,
+                _minAltitude,
+                animatedValue: widget.animation?.value ?? 1.0,
+              ),
             ),
-          )
+          ),
+          // blank space and drag to scrolling the graph
+          Container(
+            width: double.infinity,
+            height: double.infinity,
+            margin: EdgeInsets.only(left: _slidingBarLeft, right: _slidingBarRight),
+            child: GestureDetector(
+              onHorizontalDragStart: _onSlidingBarHorizontalDragStart,
+              onHorizontalDragUpdate: _onSlidingBarHorizontalDragUpdate,
+              onHorizontalDragEnd: _onSlidingBarHorizontalDragEnd,
+            ),
+          ),
+          // left sliding button
+          Container(
+            width: SLIDING_BTN_WIDTH + _leftSlidingBtnLeft,
+            height: double.infinity,
+            padding: EdgeInsets.only(left: _leftSlidingBtnLeft),
+            color: kSlidingBtnScrimColor,
+            child: GestureDetector(
+              onHorizontalDragStart: _onLBHorizontalDragDown,
+              onHorizontalDragUpdate: _onLBHorizontalDragUpdate,
+              onHorizontalDragEnd: _onLBHorizontalDragEnd,
+              child: Container(
+                height: double.infinity,
+                width: SLIDING_BTN_WIDTH,
+                color: kSlidingBtnColor,
+                child: Icon(Icons.chevron_left),
+              ),
+            ),
+          ),
+          // right sliding button
+          Align(
+            alignment: Alignment.centerRight,
+            child: Container(
+              width: SLIDING_BTN_WIDTH + _rightSlidingBtnRight,
+              padding: EdgeInsets.only(right: _rightSlidingBtnRight),
+              height: double.infinity,
+              color: kSlidingBtnScrimColor,
+              alignment: Alignment.centerLeft,
+              child: GestureDetector(
+                onHorizontalDragStart: _onRBHorizontalDragDown,
+                onHorizontalDragUpdate: _onRBHorizontalDragUpdate,
+                onHorizontalDragEnd: _onRBHorizontalDragEnd,
+                child: Container(
+                  height: double.infinity,
+                  width: SLIDING_BTN_WIDTH,
+                  color: kSlidingBtnColor,
+                  child: Icon(Icons.chevron_right),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -341,30 +351,16 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
     return focusOnScreen - newLocationInGraph;
   }
 
-  // ===========
-
-  _onScaleStart(ScaleStartDetails details) {
-    _focusPoint = details.focalPoint;
-    _lastScaleValue = _scale;
-    _lastUpdateFocalPoint = details.focalPoint;
-  }
-
-  _onScaleUpdate(ScaleUpdateDetails details) {
+  _updateScaleAndScrolling(double newScale, double focusX, {double extraX = 0.0}) {
     var widgetWidth = context.size.width;
-    double newScale = (_lastScaleValue * details.scale);
 
-    if (newScale < 1.0) {
-      newScale = 1.0;
-    } else if (newScale > widget.maxScale) {
-      newScale = widget.maxScale;
-    }
+    newScale = newScale.clamp(1.0, widget.maxScale);
 
-    double left = _calculatePosition(newScale, _focusPoint.dx);
+    // 根据缩放焦点计算出left
+    double left = _calculatePosition(newScale, focusX);
 
-    // 加上水平拖动的偏移量
-    var deltaPosition = (details.focalPoint - _lastUpdateFocalPoint);
-    _lastUpdateFocalPoint = details.focalPoint;
-    left += deltaPosition.dx;
+    // 加上额外的水平偏移量
+    left += extraX;
 
     // 将x范围限制图表宽度内
     double newPositionX = left.clamp((newScale - 1) * -widgetWidth, 0.0);
@@ -387,6 +383,23 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       _slidingBarLeft = lOffsetX + SLIDING_BTN_WIDTH;
       _slidingBarRight = rOffsetX + SLIDING_BTN_WIDTH;
     });
+  }
+
+  // ===========
+
+  _onScaleStart(ScaleStartDetails details) {
+    _focusPoint = details.focalPoint;
+    _lastScaleValue = _scale;
+    _lastUpdateFocalPoint = details.focalPoint;
+  }
+
+  _onScaleUpdate(ScaleUpdateDetails details) {
+    double newScale = (_lastScaleValue * details.scale);
+
+    var deltaPosition = (details.focalPoint - _lastUpdateFocalPoint);
+    _lastUpdateFocalPoint = details.focalPoint;
+
+    _updateScaleAndScrolling(newScale, _focusPoint.dx, extraX: deltaPosition.dx);
   }
 
   _onScaleEnd(ScaleEndDetails details) {}
@@ -523,6 +536,8 @@ class AltitudePainter extends CustomPainter {
   int maxLevel;
   int minLevel;
 
+  double _maxAltitude = 0.0;
+  double _minAlditude = 0.0;
   double _maxVerticalAxisValue;
   double _minVerticalAxisValue;
   double _verticalAxisInterval;
@@ -561,6 +576,8 @@ class AltitudePainter extends CustomPainter {
 
   AltitudePainter(
     this._altitudePointList,
+    this._maxAltitude,
+    this._minAlditude,
     this._maxVerticalAxisValue,
     this._minVerticalAxisValue,
     this._verticalAxisInterval,
@@ -570,10 +587,10 @@ class AltitudePainter extends CustomPainter {
     this.animatedValue = 1.0,
     this.maxLevel = 0,
     this.minLevel = 0,
-    this.axisTextColor = Colors.black,
-    this.gradientColors = const [Color(0x821E88E5), Color(0x0C1E88E5)],
-    Color pathColor = const Color(0xFF003c60),
-    Color axisLineColor = Colors.amber,
+    this.axisTextColor = kAxisTextColor,
+    this.gradientColors = kAltitudeGradientColors,
+    Color pathColor = kAltitudePathColor,
+    Color axisLineColor = kVerticalAxisDottedLineColor,
   }) {
     _linePaint.color = pathColor;
     _levelLinePaint.color = axisLineColor;
@@ -717,6 +734,8 @@ class AltitudePainter extends CustomPainter {
 
   /// =========== 绘制海拔图连线部分
 
+  double lastGradientTop = 0.0;
+
   /// 绘制海拔图连线部分
   void drawLines(Canvas canvas, Size size) {
     var pointList = _altitudePointList;
@@ -742,6 +761,12 @@ class AltitudePainter extends CustomPainter {
     }
 
     // 绘制线条下面的渐变部分
+    double gradientTop = h - ratioY * (_maxAltitude - _minAlditude) * animatedValue;
+    if (lastGradientTop != gradientTop) {
+      lastGradientTop = gradientTop;
+      _gradualPaint.shader =
+          ui.Gradient.linear(Offset(0.0, gradientTop), Offset(0.0, size.height), gradientColors);
+    }
     drawGradualShadow(path, size, canvas);
 
     // 先绘制渐变再绘制线,避免线被遮挡住
@@ -757,9 +782,6 @@ class AltitudePainter extends CustomPainter {
     gradualPath.addPath(path, Offset.zero);
     gradualPath.lineTo(gradualPath.getBounds().width, size.height);
     gradualPath.relativeLineTo(-gradualPath.getBounds().width, 0.0);
-
-    _gradualPaint.shader =
-        ui.Gradient.linear(Offset(0.0, 300.0), Offset(0.0, size.height), gradientColors);
 
     canvas.save();
     canvas.drawPath(gradualPath, _gradualPaint);
@@ -842,7 +864,7 @@ class AltitudePainter extends CustomPainter {
   }
 }
 
-class AltitudeThumbPainter extends CustomPainter {
+class AltitudeThumbnailPainter extends CustomPainter {
   // ===== Data
   List<AltitudePoint> _altitudePointList;
 
@@ -851,7 +873,7 @@ class AltitudeThumbPainter extends CustomPainter {
 
   // ===== Paint
   Paint _linePaint = Paint()
-    ..color = Colors.grey
+    ..color = kAltitudeThumbnailPathColor
     ..isAntiAlias = false
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
@@ -859,13 +881,11 @@ class AltitudeThumbPainter extends CustomPainter {
   Paint _gradualPaint = Paint()
     ..style = PaintingStyle.fill
     ..isAntiAlias = false
-    ..color = Colors.grey.shade300;
-
-  double _maxGradualPaintColorOpacity = Colors.grey.shade300.opacity;
+    ..color = kAltitudeThumbnailGradualColor;
 
   double animatedValue;
 
-  AltitudeThumbPainter(
+  AltitudeThumbnailPainter(
     this._altitudePointList,
     this._maxVerticalAxisValue,
     this._minVerticalAxisValue, {
@@ -920,8 +940,8 @@ class AltitudeThumbPainter extends CustomPainter {
     gradualPath.relativeLineTo(-gradualPath.getBounds().width, 0.0);
 
     canvas.save();
-    var opacity = (_maxGradualPaintColorOpacity * animatedValue).clamp(0.0, 1.0);
-    _gradualPaint.color = _linePaint.color.withOpacity(opacity);
+    var opacity = animatedValue.clamp(0.0, 1.0);
+    _gradualPaint.color = _gradualPaint.color.withOpacity(opacity);
     canvas.drawPath(gradualPath, _gradualPaint);
     canvas.restore();
   }
