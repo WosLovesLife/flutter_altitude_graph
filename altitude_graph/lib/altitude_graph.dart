@@ -275,8 +275,8 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
             child: CustomPaint(
               painter: AltitudeThumbnailPainter(
                 widget.altitudePointList,
-                _maxAltitude,
-                _minAltitude,
+                _maxVerticalAxisValue,
+                _minVerticalAxisValue,
                 animatedValue: widget.animation?.value ?? 1.0,
               ),
             ),
@@ -549,9 +549,9 @@ class AltitudePainter extends CustomPainter {
   double animatedValue;
 
   // ===== 用于保存帧的信息, 在单纯平移的操作时可以避免额外的绘制开销
-  ui.Picture picture;
-  ui.Picture altitudePicture;
-  ui.Picture horizontalPicture;
+  ui.Picture vAxisPicture;
+  ui.Picture hAxisPicture;
+  ui.Picture pathPicture;
 
   // ===== Paint
   // 海拔线的画笔
@@ -603,62 +603,66 @@ class AltitudePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 30是给上下留出的距离, 这样竖轴的最顶端的字就不会被截断, 下方可以用来显示横轴的字
+    // 30 是给上下留出的距离, 这样竖轴的最顶端的字就不会被截断, 下方可以用来显示横轴的字
     Size availableSize = Size(size.width, size.height - 30.0);
 
-    // 50是给左右留出间距, 避免标签上的文字被截断, 同时避免线图覆盖竖轴的字
-    Size lineSize = Size(availableSize.width * _scale - 50, availableSize.height);
+    // 50 是给左右留出间距, 避免标签上的文字被截断, 同时避免线图覆盖竖轴的字
+    Size pathSize = Size(availableSize.width * _scale - 50, availableSize.height);
 
-    Size horizontalAxisSize = Size(availableSize.width - 20, availableSize.height);
+    // 忘记了为啥要减 20 ... 忘记及时留注释了
+    double hAxisWidth = availableSize.width - 20;
+    // 高度 +2 是为了将横轴文字置于底部并加一个 marginTop.
+    double hAxisTransY = availableSize.height + 2;
+
+    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width, size.height)));
+    // 向下滚动15的距离给顶部留出空间
+    canvas.translate(0.0, 15.0);
 
     // 绘制竖轴
-    if (picture == null) {
+    if (vAxisPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
       var canvas2 = Canvas(pictureRecorder);
-      canvas2.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width, size.height)));
-      // 向下滚动15的距离给顶部留出空间
-      canvas2.translate(0.0, 15.0);
 
       drawVerticalAxis(canvas2, availableSize);
-      picture = pictureRecorder.endRecording();
+      vAxisPicture = pictureRecorder.endRecording();
     }
 
     canvas.save();
-    canvas.drawPicture(picture);
+    canvas.drawPicture(vAxisPicture);
     canvas.restore();
 
     // 绘制线图
-    if (altitudePicture == null) {
+    if (pathPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
       var canvas2 = Canvas(pictureRecorder);
 
-      drawLines(canvas2, lineSize);
-      altitudePicture = pictureRecorder.endRecording();
+      drawLines(canvas2, pathSize);
+      pathPicture = pictureRecorder.endRecording();
     }
 
     canvas.save();
-    // 剪裁绘制的窗口, 避免覆盖竖轴 同时节省绘制的开销
-    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width - 24, size.height)));
-    // _offset.dx通常都是些向左偏移的量 +15 是为了避免出关键点标签的文字被截断
+    // 剪裁绘制的窗口, 节省绘制的开销. -24 是为了避免覆盖纵轴
+    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width - 24, size.height)));
+    // _offset.dx通常都是向左偏移的量 +15 是为了避免关键点 Label 的文字被截断
     canvas.translate(_offset.dx + 15, 0.0);
-    canvas.drawPicture(altitudePicture);
+    canvas.drawPicture(pathPicture);
     canvas.restore();
 
     // 绘制横轴
-    if (horizontalPicture == null) {
+    if (hAxisPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
       var canvas2 = Canvas(pictureRecorder);
 
-      drawHorizontalAxis(canvas2, horizontalAxisSize, lineSize.width);
-      horizontalPicture = pictureRecorder.endRecording();
+      drawHorizontalAxis(canvas2, hAxisWidth, pathSize.width);
+      hAxisPicture = pictureRecorder.endRecording();
     }
 
     canvas.save();
-    // 不需要避免竖轴被遮挡问题, 这一步是为了减少绘制时的开销.
-    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width, size.height)));
+    // 剪裁绘制窗口, 减少绘制时的开销.
+    canvas.clipRect(Rect.fromPoints(Offset(0.0, hAxisTransY), Offset(size.width, size.height)));
     // x偏移和线图对应上, y偏移将绘制点挪到底部
-    canvas.translate(_offset.dx + 15, horizontalAxisSize.height + 2);
-    canvas.drawPicture(horizontalPicture);
+    canvas.translate(_offset.dx + 15, hAxisTransY);
+    canvas.drawPicture(hAxisPicture);
     canvas.restore();
   }
 
@@ -728,37 +732,36 @@ class AltitudePainter extends CustomPainter {
       );
   }
 
-  void drawHorizontalAxis(Canvas canvas, Size size, double totalWidth) {
+  void drawHorizontalAxis(Canvas canvas, double viewportWidth, double totalWidth) {
     Offset lastPoint = _altitudePointList?.last?.point;
     if (lastPoint == null) return;
 
-    double ratio = size.width / totalWidth;
+    double ratio = viewportWidth / totalWidth;
     double a = _altitudePointList.last.point.dx * ratio;
     double interval = a / 6.0;
-    double miters;
+    int miters;
     if (interval >= 100.0) {
-      miters = (interval / 100.0).ceilToDouble() * 100;
+      miters = (interval / 100.0).ceil() * 100;
     } else if (interval >= 10) {
-      miters = (interval / 10.0).ceilToDouble() * 10;
+      miters = (interval / 10.0).ceil() * 10;
     } else {
-      miters = (interval / 5.0).ceilToDouble() * 5;
+      miters = (interval / 5.0).ceil() * 5;
     }
-    double r = miters / interval;
-    double hInterval = size.width / 6.0 * r;
+    double r = miters.toDouble() / interval;
+    double hInterval = viewportWidth / 6.0 * r;
 
     double count = totalWidth / hInterval;
     for (int i = 0; i <= count; i++) {
       drawHorizontalAxisLine(
         canvas,
-        size,
-        "${i * miters.toInt()}",
+        "${i * miters}",
         i * hInterval,
       );
     }
   }
 
   /// 绘制数轴的一行
-  void drawHorizontalAxisLine(Canvas canvas, Size size, String text, double width) {
+  void drawHorizontalAxisLine(Canvas canvas, String text, double width) {
     var tp = newVerticalAxisTextPainter(text)..layout();
 
     // 绘制虚线右边的Text
@@ -906,9 +909,9 @@ class AltitudePainter extends CustomPainter {
       return true;
     }else if(_offset.dx != ap._offset.dx){
       // 如果只是简单的平移操作, 只需要按照之前帧保留下来的的picture对canvas进行平移即可
-      picture = ap.picture;
-      altitudePicture = ap.altitudePicture;
-      horizontalPicture = ap.horizontalPicture;
+      vAxisPicture = ap.vAxisPicture;
+      pathPicture = ap.pathPicture;
+      hAxisPicture = ap.hAxisPicture;
       return true;
     }
 
