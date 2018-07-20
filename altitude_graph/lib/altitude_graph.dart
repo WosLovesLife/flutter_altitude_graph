@@ -529,6 +529,11 @@ const int VERTICAL_TEXT_WIDTH = 25;
 const double DOTTED_LINE_WIDTH = 2.0;
 const double DOTTED_LINE_INTERVAL = 2.0;
 
+// ===== 用于保存帧的信息, 在单纯平移的操作时可以避免额外的绘制开销
+ui.Picture vAxisPicture;
+ui.Picture hAxisPicture;
+ui.Picture pathPicture;
+
 class AltitudePainter extends CustomPainter {
   // ===== Data
   List<AltitudePoint> _altitudePointList;
@@ -547,11 +552,6 @@ class AltitudePainter extends CustomPainter {
   Offset _offset = Offset.zero;
 
   double animatedValue;
-
-  // ===== 用于保存帧的信息, 在单纯平移的操作时可以避免额外的绘制开销
-  ui.Picture vAxisPicture;
-  ui.Picture hAxisPicture;
-  ui.Picture pathPicture;
 
   // ===== Paint
   // 海拔线的画笔
@@ -898,20 +898,25 @@ class AltitudePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
-    if (oldDelegate == null) return true;
+    if (oldDelegate == null) {
+      vAxisPicture = null;
+      pathPicture =null;
+      hAxisPicture = null;
+      return true;
+    }
 
     // 判断是否需要重绘, 并将上一帧保存的数据赋值给这一帧
     var ap = oldDelegate as AltitudePainter;
     if (_scale != ap._scale ||
         animatedValue != ap.animatedValue ||
         _altitudePointList != ap._altitudePointList) {
+      vAxisPicture = null;
+      pathPicture =null;
+      hAxisPicture = null;
       // 如果 缩放,动画或数据发生改变, 则需要完全重绘当前帧.
       return true;
-    }else if(_offset.dx != ap._offset.dx){
+    } else if (_offset.dx != ap._offset.dx) {
       // 如果只是简单的平移操作, 只需要按照之前帧保留下来的的picture对canvas进行平移即可
-      vAxisPicture = ap.vAxisPicture;
-      pathPicture = ap.pathPicture;
-      hAxisPicture = ap.hAxisPicture;
       return true;
     }
 
