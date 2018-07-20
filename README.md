@@ -18,8 +18,10 @@ see the [example]()
 
 
 ## TODO
-[] 支持长按显示指定坐标点的详细信息
-[] 支持惯性滑动
+- [ ] 支持长按显示指定坐标点的详细信息
+- [ ] 支持惯性滑动
+- [ ] 解决规律性掉帧的问题
+- [ ] 第一次放大时卡顿, 底部ControlBar 滑钮从两边往中间拖动时尤其明显
 
 # License
 altitude_graph is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file.
