@@ -537,7 +537,7 @@ class AltitudePainter extends CustomPainter {
   int minLevel;
 
   double _maxAltitude = 0.0;
-  double _minAlditude = 0.0;
+  double _minAltitude = 0.0;
   double _maxVerticalAxisValue;
   double _minVerticalAxisValue;
   double _verticalAxisInterval;
@@ -547,6 +547,11 @@ class AltitudePainter extends CustomPainter {
   Offset _offset = Offset.zero;
 
   double animatedValue;
+
+  // ===== 用于保存帧的信息, 在单纯平移的操作时可以避免额外的绘制开销
+  ui.Picture picture;
+  ui.Picture altitudePicture;
+  ui.Picture horizontalPicture;
 
   // ===== Paint
   // 海拔线的画笔
@@ -577,7 +582,7 @@ class AltitudePainter extends CustomPainter {
   AltitudePainter(
     this._altitudePointList,
     this._maxAltitude,
-    this._minAlditude,
+    this._minAltitude,
     this._maxVerticalAxisValue,
     this._minVerticalAxisValue,
     this._verticalAxisInterval,
@@ -600,32 +605,60 @@ class AltitudePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // 30是给上下留出的距离, 这样竖轴的最顶端的字就不会被截断, 下方可以用来显示横轴的字
     Size availableSize = Size(size.width, size.height - 30.0);
-    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width, size.height)));
-    // 向下滚动15的距离给顶部留出空间
-    canvas.translate(0.0, 15.0);
 
-    // 绘制竖轴
-    drawVerticalAxis(canvas, availableSize);
-
-    // 绘制线图
     // 50是给左右留出间距, 避免标签上的文字被截断, 同时避免线图覆盖竖轴的字
     Size lineSize = Size(availableSize.width * _scale - 50, availableSize.height);
+
+    Size horizontalAxisSize = Size(availableSize.width - 20, availableSize.height);
+
+    // 绘制竖轴
+    if (picture == null) {
+      var pictureRecorder = ui.PictureRecorder();
+      var canvas2 = Canvas(pictureRecorder);
+      canvas2.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width, size.height)));
+      // 向下滚动15的距离给顶部留出空间
+      canvas2.translate(0.0, 15.0);
+
+      drawVerticalAxis(canvas2, availableSize);
+      picture = pictureRecorder.endRecording();
+    }
+
+    canvas.save();
+    canvas.drawPicture(picture);
+    canvas.restore();
+
+    // 绘制线图
+    if (altitudePicture == null) {
+      var pictureRecorder = ui.PictureRecorder();
+      var canvas2 = Canvas(pictureRecorder);
+
+      drawLines(canvas2, lineSize);
+      altitudePicture = pictureRecorder.endRecording();
+    }
+
     canvas.save();
     // 剪裁绘制的窗口, 避免覆盖竖轴 同时节省绘制的开销
     canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width - 24, size.height)));
     // _offset.dx通常都是些向左偏移的量 +15 是为了避免出关键点标签的文字被截断
     canvas.translate(_offset.dx + 15, 0.0);
-    drawLines(canvas, lineSize);
+    canvas.drawPicture(altitudePicture);
     canvas.restore();
 
     // 绘制横轴
+    if (horizontalPicture == null) {
+      var pictureRecorder = ui.PictureRecorder();
+      var canvas2 = Canvas(pictureRecorder);
+
+      drawHorizontalAxis(canvas2, horizontalAxisSize, lineSize.width);
+      horizontalPicture = pictureRecorder.endRecording();
+    }
+
     canvas.save();
-    Size horizontalAxisSize = Size(availableSize.width - 20, availableSize.height);
     // 不需要避免竖轴被遮挡问题, 这一步是为了减少绘制时的开销.
     canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(availableSize.width, size.height)));
     // x偏移和线图对应上, y偏移将绘制点挪到底部
     canvas.translate(_offset.dx + 15, horizontalAxisSize.height + 2);
-    drawHorizontalAxis(canvas, horizontalAxisSize, lineSize.width);
+    canvas.drawPicture(horizontalPicture);
     canvas.restore();
   }
 
@@ -678,19 +711,21 @@ class AltitudePainter extends CustomPainter {
     return path;
   }
 
+  TextPainter textPainter = TextPainter(
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+  );
+
   // 生成纵轴文字的TextPainter
   TextPainter newVerticalAxisTextPainter(String text) {
-    return TextPainter(
-      textAlign: TextAlign.left,
-      textDirection: TextDirection.ltr,
-      text: TextSpan(
+    return textPainter
+      ..text = TextSpan(
         text: text,
         style: TextStyle(
           color: axisTextColor.withOpacity(animatedValue.clamp(0.0, 1.0)),
           fontSize: 8.0,
         ),
-      ),
-    );
+      );
   }
 
   void drawHorizontalAxis(Canvas canvas, Size size, double totalWidth) {
@@ -761,7 +796,7 @@ class AltitudePainter extends CustomPainter {
     }
 
     // 绘制线条下面的渐变部分
-    double gradientTop = h - ratioY * (_maxAltitude - _minAlditude) * animatedValue;
+    double gradientTop = h - ratioY * (_maxAltitude - _minAltitude) * animatedValue;
     if (lastGradientTop != gradientTop) {
       lastGradientTop = gradientTop;
       _gradualPaint.shader =
@@ -860,7 +895,24 @@ class AltitudePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
-    return true;
+    if (oldDelegate == null) return true;
+
+    // 判断是否需要重绘, 并将上一帧保存的数据赋值给这一帧
+    var ap = oldDelegate as AltitudePainter;
+    if (_scale != ap._scale ||
+        animatedValue != ap.animatedValue ||
+        _altitudePointList != ap._altitudePointList) {
+      // 如果 缩放,动画或数据发生改变, 则需要完全重绘当前帧.
+      return true;
+    }else if(_offset.dx != ap._offset.dx){
+      // 如果只是简单的平移操作, 只需要按照之前帧保留下来的的picture对canvas进行平移即可
+      picture = ap.picture;
+      altitudePicture = ap.altitudePicture;
+      horizontalPicture = ap.horizontalPicture;
+      return true;
+    }
+
+    return false;
   }
 }
 
@@ -899,7 +951,8 @@ class AltitudeThumbnailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
-    return true;
+    return oldDelegate == null ||
+        (oldDelegate as AltitudeThumbnailPainter).animatedValue != animatedValue;
   }
 
   /// =========== 绘制海拔图连线部分
