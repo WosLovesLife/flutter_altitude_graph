@@ -88,7 +88,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
 
   // ==== 放大/和放大的基点的值. 在动画/手势中会实时变化
   double _scale = 1.0;
-  Offset _position = Offset.zero;
+  double _offsetX = 0.0;
 
   // ==== 辅助动画/手势的计算
   Offset _focusPoint;
@@ -140,7 +140,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     if (_scale != 1.0) {
       setState(() {
         _scale = 1.0;
-        _position = Offset(0.0, 0.0);
+        _offsetX = 0.0;
         _leftSlidingBtnLeft = 0.0;
         _rightSlidingBtnRight = 0.0;
       });
@@ -215,7 +215,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     return OrientationBuilder(
       builder: (BuildContext context, Orientation orientation) {
         return LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
-          bool forceRedraw = _adjustResize(constraints.biggest);
+          bool forceRepaint = _adjustResize(constraints.biggest);
 
           Widget thumbnailController;
           if (widget.slidingBarVisible) {
@@ -244,7 +244,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
                         _verticalAxisInterval,
                         _scale,
                         widget.maxScale,
-                        _position,
+                        _offsetX,
                         animatedValue: widget.animation?.value ?? 1.0,
                         maxLevel: _maxLevel,
                         minLevel: _minLevel,
@@ -252,7 +252,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
                         axisTextColor: widget.axisTextColor,
                         gradientColors: widget.gradientColors,
                         pathColor: widget.pathColor,
-                        forceRedraw: forceRedraw,
+                        forceRepaint: forceRepaint,
                       ),
                     ),
                   ),
@@ -352,10 +352,10 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
 
   /// 计算偏移量, 默认放大时都是向右偏移的, 因此想在放大时保持比例, 就需要将缩放点移至0点
   /// 算法: 左偏移量L = 当前焦点f在之前图宽上的位置p带入到新图宽中再减去焦点f在屏幕上的位置
-  double _calculatePosition(double newScale, double focusOnScreen) {
+  double _calculateOffsetX(double newScale, double focusOnScreen) {
     // ratioInGraph 就是当前的焦点实际对应在之前的图宽上的比例
     var widgetWidth = context.size.width;
-    double ratioInGraph = (_position.dx.abs() + focusOnScreen) / (_scale * widgetWidth);
+    double ratioInGraph = (_offsetX.abs() + focusOnScreen) / (_scale * widgetWidth);
     // 现在新计算出的图宽
     double newTotalWidth = newScale * widgetWidth;
     // 将之前的比例带入当前的图宽即为焦点在新图上的位置
@@ -370,19 +370,18 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     newScale = newScale.clamp(1.0, widget.maxScale);
 
     // 根据缩放焦点计算出left
-    double left = _calculatePosition(newScale, focusX);
+    double left = _calculateOffsetX(newScale, focusX);
 
     // 加上额外的水平偏移量
     left += extraX;
 
     // 将x范围限制图表宽度内
-    double newPositionX = left.clamp((newScale - 1) * -widgetWidth, 0.0);
-    var newPosition = Offset(newPositionX, 0.0);
+    double newOffsetX = left.clamp((newScale - 1) * -widgetWidth, 0.0);
 
     // 根据缩放,同步缩略滑钮的状态
     var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
-    double lOffsetX = -newPositionX / newScale;
-    double rOffsetX = ((newScale - 1) * widgetWidth + newPositionX) / newScale;
+    double lOffsetX = -newOffsetX / newScale;
+    double rOffsetX = ((newScale - 1) * widgetWidth + newOffsetX) / newScale;
 
     double r = maxViewportWidth / widgetWidth;
     lOffsetX *= r;
@@ -390,26 +389,26 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
 
     setState(() {
       _scale = newScale;
-      _position = newPosition;
+      _offsetX = newOffsetX;
       _leftSlidingBtnLeft = lOffsetX;
       _rightSlidingBtnRight = rOffsetX;
     });
   }
 
   bool _adjustResize(Size size) {
-    bool forceRedraw = false;
+    bool forceRepaint = false;
     if (!_lastSize.isEmpty && !size.isEmpty && _lastSize != size) {
       var ratio = size.width / _lastSize.width;
       var validWidth = (width) => width - SLIDING_BTN_WIDTH * 2.0;
       var slidingRatio = validWidth(size.width) / validWidth(_lastSize.width);
 
-      _position *= ratio;
+      _offsetX *= ratio;
       _leftSlidingBtnLeft *= slidingRatio;
       _rightSlidingBtnRight *= slidingRatio;
-      forceRedraw = true;
+      forceRepaint = true;
     }
     _lastSize = size;
-    return forceRedraw;
+    return forceRepaint;
   }
 
   // ===========
@@ -434,16 +433,14 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
   // =========== 左边按钮的滑动操作
 
   _onLBHorizontalDragDown(DragStartDetails details) {
-    _lastLeftSlidingBtnLeft = details.globalPosition.dx;
+    _lastLeftSlidingBtnLeft = details.globalPosition.dx - _leftSlidingBtnLeft;
   }
 
   _onLBHorizontalDragUpdate(DragUpdateDetails details) {
     var widgetWidth = context.size.width;
     var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
 
-    var deltaX = details.globalPosition.dx - _lastLeftSlidingBtnLeft;
-    _lastLeftSlidingBtnLeft = details.globalPosition.dx;
-    double newLOffsetX = _leftSlidingBtnLeft + deltaX;
+    var newLOffsetX = details.globalPosition.dx - _lastLeftSlidingBtnLeft;
 
     // 根据最大缩放倍数, 限制滑动的最大距离.
     // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
@@ -458,14 +455,12 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     // 最大窗口大小 / 当前窗口大小 = 应该缩放的倍数
     double newScale = maxViewportWidth / viewportWidth;
     // 计算缩放后的左偏移量
-    double newPositionX = _calculatePosition(newScale, widgetWidth);
-
-    var newPosition = Offset(newPositionX, 0.0);
+    double newOffsetX = _calculateOffsetX(newScale, widgetWidth);
 
     setState(() {
       _leftSlidingBtnLeft = newLOffsetX;
       _scale = newScale;
-      _position = newPosition;
+      _offsetX = newOffsetX;
     });
   }
 
@@ -474,16 +469,14 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
   // =========== 右边按钮的滑动操作
 
   _onRBHorizontalDragDown(DragStartDetails details) {
-    _lastRightSlidingBtnRight = details.globalPosition.dx;
+    _lastRightSlidingBtnRight = details.globalPosition.dx + _rightSlidingBtnRight;
   }
 
   _onRBHorizontalDragUpdate(DragUpdateDetails details) {
     var widgetWidth = context.size.width;
     var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
 
-    var deltaX = details.globalPosition.dx - _lastRightSlidingBtnRight;
-    _lastRightSlidingBtnRight = details.globalPosition.dx;
-    double newROffsetX = _rightSlidingBtnRight - deltaX;
+    var newROffsetX = _lastRightSlidingBtnRight - details.globalPosition.dx;
 
     // 根据最大缩放倍数, 限制滑动的最大距离.
     // Viewport: 窗口指的是两个滑块(不含滑块自身)中间的内容, 即左滑钮的右边到右滑钮的左边的距离.
@@ -498,20 +491,18 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     // 最大窗口大小 / 当前窗口大小 = 应该缩放的倍数
     double newScale = maxViewportWidth / viewportWidth;
     // 计算缩放后的左偏移量
-    double newPositionX = _calculatePosition(newScale, 0.0);
-
-    var newPosition = Offset(newPositionX, 0.0);
+    double newOffsetX = _calculateOffsetX(newScale, 0.0);
 
     setState(() {
       _rightSlidingBtnRight = newROffsetX;
       _scale = newScale;
-      _position = newPosition;
+      _offsetX = newOffsetX;
     });
   }
 
   _onRBHorizontalDragEnd(DragEndDetails details) {}
 
-  // =========== 右边按钮的滑动操作
+  // =========== 滑钮中间的空白区域的拖拽操作
 
   _onSlidingBarHorizontalDragStart(DragStartDetails details) {
     _lastSlidingBarPosition = details.globalPosition.dx;
@@ -521,25 +512,24 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     var widgetWidth = context.size.width;
 
     // 得到本次滑动的偏移量, 乘倍数后和之前的偏移量相减等于新的偏移量
-    var deltaPositionX = (details.globalPosition.dx - _lastSlidingBarPosition);
+    var deltaX = (details.globalPosition.dx - _lastSlidingBarPosition);
     _lastSlidingBarPosition = details.globalPosition.dx;
-    double left = _position.dx - deltaPositionX * _scale;
+    double left = _offsetX - deltaX * _scale;
 
     // 将x范围限制图表宽度内
-    double newPositionX = left.clamp((_scale - 1) * -widgetWidth, 0.0);
-    var newPosition = Offset(newPositionX, 0.0);
+    double newOffsetX = left.clamp((_scale - 1) * -widgetWidth, 0.0);
 
     // 同步缩略滑钮的状态
     var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
-    double lOffsetX = -newPositionX / _scale;
-    double rOffsetX = ((_scale - 1) * widgetWidth + newPositionX) / _scale;
+    double lOffsetX = -newOffsetX / _scale;
+    double rOffsetX = ((_scale - 1) * widgetWidth + newOffsetX) / _scale;
 
     double r = maxViewportWidth / widgetWidth;
     lOffsetX *= r;
     rOffsetX *= r;
 
     setState(() {
-      _position = newPosition;
+      _offsetX = newOffsetX;
       _leftSlidingBtnLeft = lOffsetX;
       _rightSlidingBtnRight = rOffsetX;
     });
@@ -578,29 +568,22 @@ class AltitudePainter extends CustomPainter {
 
   double _scale = 1.0;
   double _maxScale = 1.0;
-  Offset _offset = Offset.zero;
+  double _offsetX = 0.0;
 
   double animatedValue;
 
   // ===== Paint
   // 海拔线的画笔
-  Paint _linePaint = Paint()
-    ..strokeWidth = 1.0
-    ..style = PaintingStyle.stroke;
+  Paint _linePaint;
 
   // 海拔线填充的画笔
-  Paint _gradualPaint = Paint()
-    ..isAntiAlias = false
-    ..style = PaintingStyle.fill;
+  Paint _gradualPaint;
 
   // 关键点的画笔
-  Paint _signPointPaint = Paint();
+  Paint _signPointPaint;
 
   // 竖轴水平虚线的画笔
-  Paint _levelLinePaint = Paint()
-    ..strokeWidth = 1.0
-    ..isAntiAlias = false
-    ..style = PaintingStyle.stroke;
+  Paint _levelLinePaint;
 
   // 文字颜色
   Color axisTextColor;
@@ -608,7 +591,7 @@ class AltitudePainter extends CustomPainter {
   // 海拔线填充的梯度颜色
   List<Color> gradientColors;
 
-  bool forceRedraw;
+  bool forceRepaint;
 
   AltitudePainter(
     this._altitudePointList,
@@ -619,7 +602,7 @@ class AltitudePainter extends CustomPainter {
     this._verticalAxisInterval,
     this._scale,
     this._maxScale,
-    this._offset, {
+    this._offsetX, {
     this.animatedValue = 1.0,
     this.maxLevel = 0,
     this.minLevel = 0,
@@ -627,11 +610,20 @@ class AltitudePainter extends CustomPainter {
     this.gradientColors = kAltitudeGradientColors,
     Color pathColor = kAltitudePathColor,
     Color axisLineColor = kVerticalAxisDottedLineColor,
-    this.forceRedraw = false,
-  }) {
-    _linePaint.color = pathColor;
-    _levelLinePaint.color = axisLineColor;
-  }
+    this.forceRepaint = false,
+  })  : _linePaint = Paint()
+          ..strokeWidth = 1.0
+          ..style = PaintingStyle.stroke
+          ..color = pathColor,
+        _gradualPaint = Paint()
+          ..isAntiAlias = false
+          ..style = PaintingStyle.fill,
+        _signPointPaint = Paint(),
+        _levelLinePaint = Paint()
+          ..strokeWidth = 1.0
+          ..isAntiAlias = false
+          ..color = axisLineColor
+          ..style = PaintingStyle.stroke;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -646,16 +638,13 @@ class AltitudePainter extends CustomPainter {
     // 高度 +2 是为了将横轴文字置于底部并加一个 marginTop.
     double hAxisTransY = availableSize.height + 2;
 
-    canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width, size.height)));
     // 向下滚动15的距离给顶部留出空间
     canvas.translate(0.0, 15.0);
 
     // 绘制竖轴
     if (vAxisPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
-      var canvas2 = Canvas(pictureRecorder);
-
-      drawVerticalAxis(canvas2, availableSize);
+      drawVerticalAxis(Canvas(pictureRecorder), availableSize);
       vAxisPicture = pictureRecorder.endRecording();
     }
 
@@ -666,9 +655,7 @@ class AltitudePainter extends CustomPainter {
     // 绘制线图
     if (pathPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
-      var canvas2 = Canvas(pictureRecorder);
-
-      drawLines(canvas2, pathSize);
+      drawLines(Canvas(pictureRecorder), pathSize);
       pathPicture = pictureRecorder.endRecording();
     }
 
@@ -676,16 +663,14 @@ class AltitudePainter extends CustomPainter {
     // 剪裁绘制的窗口, 节省绘制的开销. -24 是为了避免覆盖纵轴
     canvas.clipRect(Rect.fromPoints(Offset.zero, Offset(size.width - 24, size.height)));
     // _offset.dx通常都是向左偏移的量 +15 是为了避免关键点 Label 的文字被截断
-    canvas.translate(_offset.dx + 15, 0.0);
+    canvas.translate(_offsetX + 15, 0.0);
     canvas.drawPicture(pathPicture);
     canvas.restore();
 
     // 绘制横轴
     if (hAxisPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
-      var canvas2 = Canvas(pictureRecorder);
-
-      drawHorizontalAxis(canvas2, hAxisWidth, pathSize.width);
+      drawHorizontalAxis(Canvas(pictureRecorder), hAxisWidth, pathSize.width);
       hAxisPicture = pictureRecorder.endRecording();
     }
 
@@ -693,7 +678,7 @@ class AltitudePainter extends CustomPainter {
     // 剪裁绘制窗口, 减少绘制时的开销.
     canvas.clipRect(Rect.fromPoints(Offset(0.0, hAxisTransY), Offset(size.width, size.height)));
     // x偏移和线图对应上, y偏移将绘制点挪到底部
-    canvas.translate(_offset.dx + 15, hAxisTransY);
+    canvas.translate(_offsetX + 15, hAxisTransY);
     canvas.drawPicture(hAxisPicture);
     canvas.restore();
   }
@@ -815,7 +800,7 @@ class AltitudePainter extends CustomPainter {
     double maxValue = _maxVerticalAxisValue - _minVerticalAxisValue;
     double h = size.height;
 
-    double ratioX = size.width * 1.0 / pointList.last.point.dx; //  * scale
+    double ratioX = size.width / pointList.last.point.dx;
     double ratioY = h / maxValue;
 
     var firstPoint = pointList.first.point;
@@ -848,14 +833,11 @@ class AltitudePainter extends CustomPainter {
   }
 
   void drawGradualShadow(Path path, Size size, Canvas canvas) {
-    var gradualPath = Path();
-    gradualPath.addPath(path, Offset.zero);
+    var gradualPath = Path.from(path);
     gradualPath.lineTo(gradualPath.getBounds().width, size.height);
     gradualPath.relativeLineTo(-gradualPath.getBounds().width, 0.0);
 
-    canvas.save();
     canvas.drawPath(gradualPath, _gradualPaint);
-    canvas.restore();
   }
 
   void drawLabel(
@@ -930,21 +912,27 @@ class AltitudePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
-    if (oldDelegate == null) {
+    // 如果是没有上一帧, 或者父控件要求强制重绘, 则
+    if (oldDelegate == null || forceRepaint) {
       _destroyPictures();
       return true;
     }
 
-    // 判断是否需要重绘, 并将上一帧保存的数据赋值给这一帧
     var ap = oldDelegate as AltitudePainter;
-    if (forceRedraw ||
-        _scale != ap._scale ||
-        animatedValue != ap.animatedValue ||
-        _altitudePointList != ap._altitudePointList) {
-      // 如果 缩放,动画或数据发生改变, 则需要完全重绘当前帧.
+    if (_altitudePointList != ap._altitudePointList) {
+      // 如果数据改变, 需要完全重新绘制
       _destroyPictures();
       return true;
-    } else if (_offset.dx != ap._offset.dx) {
+    } else if (animatedValue != ap.animatedValue) {
+      // 如果动画发生改变, 需要完全重新绘制
+      _destroyPictures();
+      return true;
+    } else if (_scale != ap._scale) {
+      // 如果缩放发生改变, 仅需要重绘Path和横轴, 纵轴不需要重绘
+      pathPicture = null;
+      hAxisPicture = null;
+      return true;
+    } else if (_offsetX != ap._offsetX) {
       // 如果只是简单的平移操作, 只需要按照之前帧保留下来的的picture对canvas进行平移即可
       return true;
     }
@@ -988,8 +976,12 @@ class AltitudeThumbnailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
-    return oldDelegate == null ||
-        (oldDelegate as AltitudeThumbnailPainter).animatedValue != animatedValue;
+    if (oldDelegate == null) return true;
+
+    var atp = oldDelegate as AltitudeThumbnailPainter;
+    if (atp.animatedValue != animatedValue || atp._altitudePointList != _altitudePointList)
+      return true;
+    return false;
   }
 
   /// =========== 绘制海拔图连线部分
