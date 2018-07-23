@@ -21,6 +21,7 @@ see the [example]()
 - [ ] 支持长按显示指定坐标点的详细信息
 - [ ] 支持惯性滑动
 - [ ] 第一次放大时卡顿, 底部ControlBar 滑钮从两边往中间拖动时尤其明显
+- [ ] 放大到一定倍数后变得非常卡顿
 
 # License
 altitude_graph is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file.

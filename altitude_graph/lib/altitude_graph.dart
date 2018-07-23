@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
 
+import 'package:flutter/services.dart';
+
 const double SLIDING_BTN_WIDTH = 30.0;
 const Color kSlidingBtnColor = Color(0x2268838B); // Colors.black54.withAlpha(100)
 const Color kSlidingBtnScrimColor = Color(0x2268838B); // Colors.black12
@@ -74,8 +76,8 @@ class AltitudeGraphView extends StatefulWidget {
   AltitudeGraphViewState createState() => new AltitudeGraphViewState();
 }
 
-class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerProviderStateMixin {
-  // 海拔图数据
+class AltitudeGraphViewState extends State<AltitudeGraphView> {
+  // ==== 海拔图数据
   int _maxLevel = 0;
   int _minLevel = 0;
   double _maxAltitude = 0.0;
@@ -84,7 +86,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
   double _minVerticalAxisValue = 0.0;
   double _verticalAxisInterval = 0.0;
 
-  // 放大/和放大的基点的值. 在动画/手势中会实时变化
+  // ==== 放大/和放大的基点的值. 在动画/手势中会实时变化
   double _scale = 1.0;
   Offset _position = Offset.zero;
 
@@ -100,12 +102,12 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
   double _lastLeftSlidingBtnLeft = 0.0;
   double _rightSlidingBtnRight = 0.0;
   double _lastRightSlidingBtnRight = 0.0;
-  double _slidingBarLeft = SLIDING_BTN_WIDTH;
-  double _slidingBarRight = SLIDING_BTN_WIDTH;
   double _lastSlidingBarPosition = 0.0;
 
   double _lastScale4ReverseAnimation = 1.0;
   AnimationStatus status;
+
+  Size _lastSize = Size.zero;
 
   @override
   void initState() {
@@ -115,6 +117,12 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
 
     widget.animation?.addListener(_onAnimationUpdated);
     widget.animation?.addStatusListener(_onAnimationStatusChanged);
+  }
+
+  @override
+  void dispose() {
+    _destroyPictures();
+    super.dispose();
   }
 
   @override
@@ -135,8 +143,6 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
         _position = Offset(0.0, 0.0);
         _leftSlidingBtnLeft = 0.0;
         _rightSlidingBtnRight = 0.0;
-        _slidingBarLeft = SLIDING_BTN_WIDTH;
-        _slidingBarRight = SLIDING_BTN_WIDTH;
       });
     }
   }
@@ -206,53 +212,57 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
 
   @override
   Widget build(BuildContext context) {
-    Widget thumbnailController;
-    if (widget.slidingBarVisible) {
-      thumbnailController = _buildThumbController();
-    } else {
-      thumbnailController = Wrap();
-    }
+    return OrientationBuilder(
+      builder: (BuildContext context, Orientation orientation) {
+        return LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
+          bool forceRedraw = _adjustResize(constraints.biggest);
 
-    return Container(
-      width: double.infinity,
-      height: double.infinity,
-      child: Column(
-        children: <Widget>[
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onScaleStart: _onScaleStart,
-                onScaleUpdate: _onScaleUpdate,
-                onScaleEnd: _onScaleEnd,
-                child: CustomPaint(
-                  painter: AltitudePainter(
-                    widget.altitudePointList,
-                    _maxAltitude,
-                    _minAltitude,
-                    _maxVerticalAxisValue,
-                    _minVerticalAxisValue,
-                    _verticalAxisInterval,
-                    _scale,
-                    widget.maxScale,
-                    _position,
-                    animatedValue: widget.animation?.value ?? 1.0,
-                    maxLevel: _maxLevel,
-                    minLevel: _minLevel,
-                    axisLineColor: widget.axisLineColor,
-                    axisTextColor: widget.axisTextColor,
-                    gradientColors: widget.gradientColors,
-                    pathColor: widget.pathColor,
+          Widget thumbnailController;
+          if (widget.slidingBarVisible) {
+            thumbnailController = _buildThumbController();
+          } else {
+            thumbnailController = Wrap();
+          }
+
+          return Column(
+            mainAxisSize: MainAxisSize.max,
+            children: <Widget>[
+              Expanded(
+                child: SizedBox.expand(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onScaleStart: _onScaleStart,
+                    onScaleUpdate: _onScaleUpdate,
+                    onScaleEnd: _onScaleEnd,
+                    child: CustomPaint(
+                      painter: AltitudePainter(
+                        widget.altitudePointList,
+                        _maxAltitude,
+                        _minAltitude,
+                        _maxVerticalAxisValue,
+                        _minVerticalAxisValue,
+                        _verticalAxisInterval,
+                        _scale,
+                        widget.maxScale,
+                        _position,
+                        animatedValue: widget.animation?.value ?? 1.0,
+                        maxLevel: _maxLevel,
+                        minLevel: _minLevel,
+                        axisLineColor: widget.axisLineColor,
+                        axisTextColor: widget.axisTextColor,
+                        gradientColors: widget.gradientColors,
+                        pathColor: widget.pathColor,
+                        forceRedraw: forceRedraw,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-          thumbnailController,
-        ],
-      ),
+              thumbnailController,
+            ],
+          );
+        });
+      },
     );
   }
 
@@ -285,7 +295,10 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
           Container(
             width: double.infinity,
             height: double.infinity,
-            margin: EdgeInsets.only(left: _slidingBarLeft, right: _slidingBarRight),
+            margin: EdgeInsets.only(
+              left: SLIDING_BTN_WIDTH + _leftSlidingBtnLeft,
+              right: SLIDING_BTN_WIDTH + _rightSlidingBtnRight,
+            ),
             child: GestureDetector(
               onHorizontalDragStart: _onSlidingBarHorizontalDragStart,
               onHorizontalDragUpdate: _onSlidingBarHorizontalDragUpdate,
@@ -380,9 +393,23 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       _position = newPosition;
       _leftSlidingBtnLeft = lOffsetX;
       _rightSlidingBtnRight = rOffsetX;
-      _slidingBarLeft = lOffsetX + SLIDING_BTN_WIDTH;
-      _slidingBarRight = rOffsetX + SLIDING_BTN_WIDTH;
     });
+  }
+
+  bool _adjustResize(Size size) {
+    bool forceRedraw = false;
+    if (!_lastSize.isEmpty && !size.isEmpty && _lastSize != size) {
+      var ratio = size.width / _lastSize.width;
+      var validWidth = (width) => width - SLIDING_BTN_WIDTH * 2.0;
+      var slidingRatio = validWidth(size.width) / validWidth(_lastSize.width);
+
+      _position *= ratio;
+      _leftSlidingBtnLeft *= slidingRatio;
+      _rightSlidingBtnRight *= slidingRatio;
+      forceRedraw = true;
+    }
+    _lastSize = size;
+    return forceRedraw;
   }
 
   // ===========
@@ -439,7 +466,6 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       _leftSlidingBtnLeft = newLOffsetX;
       _scale = newScale;
       _position = newPosition;
-      _slidingBarLeft = newLOffsetX + SLIDING_BTN_WIDTH;
     });
   }
 
@@ -480,7 +506,6 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       _rightSlidingBtnRight = newROffsetX;
       _scale = newScale;
       _position = newPosition;
-      _slidingBarRight = newROffsetX + SLIDING_BTN_WIDTH;
     });
   }
 
@@ -517,8 +542,6 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       _position = newPosition;
       _leftSlidingBtnLeft = lOffsetX;
       _rightSlidingBtnRight = rOffsetX;
-      _slidingBarLeft = lOffsetX + SLIDING_BTN_WIDTH;
-      _slidingBarRight = rOffsetX + SLIDING_BTN_WIDTH;
     });
   }
 
@@ -533,6 +556,12 @@ const double DOTTED_LINE_INTERVAL = 2.0;
 ui.Picture vAxisPicture;
 ui.Picture hAxisPicture;
 ui.Picture pathPicture;
+
+_destroyPictures() {
+  vAxisPicture = null;
+  pathPicture = null;
+  hAxisPicture = null;
+}
 
 class AltitudePainter extends CustomPainter {
   // ===== Data
@@ -579,6 +608,8 @@ class AltitudePainter extends CustomPainter {
   // 海拔线填充的梯度颜色
   List<Color> gradientColors;
 
+  bool forceRedraw;
+
   AltitudePainter(
     this._altitudePointList,
     this._maxAltitude,
@@ -596,6 +627,7 @@ class AltitudePainter extends CustomPainter {
     this.gradientColors = kAltitudeGradientColors,
     Color pathColor = kAltitudePathColor,
     Color axisLineColor = kVerticalAxisDottedLineColor,
+    this.forceRedraw = false,
   }) {
     _linePaint.color = pathColor;
     _levelLinePaint.color = axisLineColor;
@@ -899,21 +931,18 @@ class AltitudePainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) {
     if (oldDelegate == null) {
-      vAxisPicture = null;
-      pathPicture =null;
-      hAxisPicture = null;
+      _destroyPictures();
       return true;
     }
 
     // 判断是否需要重绘, 并将上一帧保存的数据赋值给这一帧
     var ap = oldDelegate as AltitudePainter;
-    if (_scale != ap._scale ||
+    if (forceRedraw ||
+        _scale != ap._scale ||
         animatedValue != ap.animatedValue ||
         _altitudePointList != ap._altitudePointList) {
-      vAxisPicture = null;
-      pathPicture =null;
-      hAxisPicture = null;
       // 如果 缩放,动画或数据发生改变, 则需要完全重绘当前帧.
+      _destroyPictures();
       return true;
     } else if (_offset.dx != ap._offset.dx) {
       // 如果只是简单的平移操作, 只需要按照之前帧保留下来的的picture对canvas进行平移即可
