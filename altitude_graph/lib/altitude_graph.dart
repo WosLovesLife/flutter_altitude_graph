@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
@@ -76,7 +77,7 @@ class AltitudeGraphView extends StatefulWidget {
   AltitudeGraphViewState createState() => new AltitudeGraphViewState();
 }
 
-class AltitudeGraphViewState extends State<AltitudeGraphView> {
+class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerProviderStateMixin {
   // ==== 海拔图数据
   int _maxLevel = 0;
   int _minLevel = 0;
@@ -107,6 +108,11 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
   double _lastScale4ReverseAnimation = 1.0;
   AnimationStatus status;
 
+  // ==== 负责惯性滑动动画
+  AnimationController controller;
+  Animation<double> animation;
+  Function listener;
+
   Size _lastSize = Size.zero;
 
   @override
@@ -117,11 +123,14 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
 
     widget.animation?.addListener(_onAnimationUpdated);
     widget.animation?.addStatusListener(_onAnimationStatusChanged);
+
+    controller = AnimationController(vsync: this, duration: Duration(seconds: 3));
   }
 
   @override
   void dispose() {
     _destroyPictures();
+    controller.dispose();
     super.dispose();
   }
 
@@ -130,6 +139,8 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     super.didUpdateWidget(oldWidget);
 
     _initData();
+
+    _resetFlingAnim();
 
     oldWidget.animation?.removeListener(_onAnimationUpdated);
     widget.animation?.addListener(_onAnimationUpdated);
@@ -406,6 +417,8 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
       _leftSlidingBtnLeft *= slidingRatio;
       _rightSlidingBtnRight *= slidingRatio;
       forceRepaint = true;
+
+      _resetFlingAnim();
     }
     _lastSize = size;
     return forceRepaint;
@@ -417,6 +430,8 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     _focusPoint = details.focalPoint;
     _lastScaleValue = _scale;
     _lastUpdateFocalPoint = details.focalPoint;
+
+    _resetFlingAnim();
   }
 
   _onScaleUpdate(ScaleUpdateDetails details) {
@@ -428,12 +443,83 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
     _updateScaleAndScrolling(newScale, _focusPoint.dx, extraX: deltaPosition.dx);
   }
 
-  _onScaleEnd(ScaleEndDetails details) {}
+  double getOffset(double lastOffset) {
+    return lastOffset % (_scale * context.size.width);
+  }
+
+  _onScaleEnd(ScaleEndDetails details) {
+    _fling(details.velocity.pixelsPerSecond.dx);
+  }
+
+  _fling(double velocity) {
+    double lastOffset = _offsetX;
+    double widgetWidth = context.size.width;
+    double maxOffset = -(_scale - 1) * widgetWidth;
+    bool directionLeft = velocity > 0;
+    double maxScrollX;
+    if (directionLeft) {
+      maxScrollX = _offsetX.abs();
+    } else {
+      maxScrollX = _offsetX - maxOffset;
+    }
+
+    if (velocity.isNaN || velocity == 0.0 || maxScrollX == 0.0) return;
+
+    var distance = velocity.abs() / 10;
+    var frictionSimulation = FrictionSimulation.through(0.0, distance, 20.0, 0.0);
+
+    var scrollOffset = frictionSimulation.timeAtX(distance - 0.1);
+    scrollOffset = scrollOffset.clamp(0.0, maxScrollX);
+    animation = Tween<double>(begin: 0.0, end: scrollOffset).animate(controller);
+
+    listener = () {
+      if (animation.value == 0.0) return;
+      var value = frictionSimulation.x(animation.value);
+
+      // 计算出新的偏移量X, 如果新偏移超过了最大值, 就停止动画
+      var newOffsetX;
+      if (directionLeft) {
+        newOffsetX = value + lastOffset;
+        if (newOffsetX > 0.0) {
+          newOffsetX = 0.0;
+          _resetFlingAnim();
+        }
+      } else {
+        newOffsetX = -value + lastOffset;
+        if (newOffsetX < maxOffset) {
+          newOffsetX = maxOffset;
+          _resetFlingAnim();
+        }
+      }
+
+      // 同步缩略滑钮的状态
+      var maxViewportWidth = widgetWidth - SLIDING_BTN_WIDTH * 2;
+      double r = maxViewportWidth / widgetWidth;
+      double lOffsetX = -newOffsetX / _scale * r;
+      double rOffsetX = ((_scale - 1) * widgetWidth + newOffsetX) / _scale * r;
+
+      setState(() {
+        _offsetX = newOffsetX;
+        _leftSlidingBtnLeft = lOffsetX;
+        _rightSlidingBtnRight = rOffsetX;
+      });
+    };
+
+    animation.addListener(listener);
+
+    controller.forward(from: 0.0);
+  }
+
+  _resetFlingAnim() {
+    animation?.removeListener(listener);
+    controller?.reset();
+  }
 
   // =========== 左边按钮的滑动操作
 
   _onLBHorizontalDragDown(DragStartDetails details) {
     _lastLeftSlidingBtnLeft = details.globalPosition.dx - _leftSlidingBtnLeft;
+    _resetFlingAnim();
   }
 
   _onLBHorizontalDragUpdate(DragUpdateDetails details) {
@@ -470,6 +556,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
 
   _onRBHorizontalDragDown(DragStartDetails details) {
     _lastRightSlidingBtnRight = details.globalPosition.dx + _rightSlidingBtnRight;
+    _resetFlingAnim();
   }
 
   _onRBHorizontalDragUpdate(DragUpdateDetails details) {
@@ -506,6 +593,7 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> {
 
   _onSlidingBarHorizontalDragStart(DragStartDetails details) {
     _lastSlidingBarPosition = details.globalPosition.dx;
+    _resetFlingAnim();
   }
 
   _onSlidingBarHorizontalDragUpdate(DragUpdateDetails details) {
