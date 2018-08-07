@@ -198,14 +198,14 @@ class AltitudeGraphViewState extends State<AltitudeGraphView> with SingleTickerP
       }
     }
 
-    var absMaxAltitude = _maxAltitude.abs();
-    if (absMaxAltitude > 1000) {
+    var maxDivide = _maxAltitude - _minAltitude;
+    if (maxDivide > 1000) {
       _maxVerticalAxisValue = (_maxAltitude / 1000.0).ceil() * 1000.0;
       _minVerticalAxisValue = (_minAltitude / 1000.0).floor() * 1000.0;
-    } else if (absMaxAltitude > 100) {
+    } else if (maxDivide > 100) {
       _maxVerticalAxisValue = (_maxAltitude / 100.0).ceil() * 100.0;
       _minVerticalAxisValue = (_minAltitude / 100.0).floor() * 100.0;
-    } else if (absMaxAltitude > 10) {
+    } else if (maxDivide > 10) {
       _maxVerticalAxisValue = (_maxAltitude / 10.0).ceil() * 10.0;
       _minVerticalAxisValue = (_minAltitude / 10.0).floor() * 10.0;
     }
