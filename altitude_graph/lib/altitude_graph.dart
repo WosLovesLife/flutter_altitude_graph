@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'dart:ui' as ui;
 
-import 'package:flutter/services.dart';
-
 const double SLIDING_BTN_WIDTH = 30.0;
 const Color kSlidingBtnColor = Color(0x2268838B); // Colors.black54.withAlpha(100)
 const Color kSlidingBtnScrimColor = Color(0x2268838B); // Colors.black12
@@ -721,8 +719,6 @@ class AltitudePainter extends CustomPainter {
     // 50 是给左右留出间距, 避免标签上的文字被截断, 同时避免线图覆盖竖轴的字
     Size pathSize = Size(availableSize.width * _scale - 50, availableSize.height);
 
-    // 忘记了为啥要减 20 ... 忘记及时留注释了
-    double hAxisWidth = availableSize.width - 20;
     // 高度 +2 是为了将横轴文字置于底部并加一个 marginTop.
     double hAxisTransY = availableSize.height + 2;
 
@@ -732,7 +728,7 @@ class AltitudePainter extends CustomPainter {
     // 绘制竖轴
     if (vAxisPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
-      drawVerticalAxis(Canvas(pictureRecorder), availableSize);
+      _drawVerticalAxis(Canvas(pictureRecorder), availableSize);
       vAxisPicture = pictureRecorder.endRecording();
     }
 
@@ -743,7 +739,7 @@ class AltitudePainter extends CustomPainter {
     // 绘制线图
     if (pathPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
-      drawLines(Canvas(pictureRecorder), pathSize);
+      _drawLines(Canvas(pictureRecorder), pathSize);
       pathPicture = pictureRecorder.endRecording();
     }
 
@@ -758,7 +754,7 @@ class AltitudePainter extends CustomPainter {
     // 绘制横轴
     if (hAxisPicture == null) {
       var pictureRecorder = ui.PictureRecorder();
-      drawHorizontalAxis(Canvas(pictureRecorder), hAxisWidth, pathSize.width);
+      _drawHorizontalAxis(Canvas(pictureRecorder), availableSize.width, pathSize.width);
       hAxisPicture = pictureRecorder.endRecording();
     }
 
@@ -775,31 +771,29 @@ class AltitudePainter extends CustomPainter {
 
   /// 绘制背景数轴
   /// 根据最大高度和间隔值计算出需要把纵轴分成几段
-  void drawVerticalAxis(Canvas canvas, Size size) {
-    var availableHeight = size.height;
+  void _drawVerticalAxis(Canvas canvas, Size size) {
+    // 节点的数量
+    var nodeCount = (_maxVerticalAxisValue - _minVerticalAxisValue) / _verticalAxisInterval;
 
-    var levelCount = (_maxVerticalAxisValue - _minVerticalAxisValue) / _verticalAxisInterval;
-    var labelCount = _maxVerticalAxisValue / _verticalAxisInterval;
-
-    var interval = availableHeight / levelCount;
+    var interval = size.height / nodeCount;
 
     canvas.save();
-    for (int i = 0; i <= levelCount; i++) {
-      var label = (_verticalAxisInterval * (labelCount - i)).toInt();
-      drawVerticalAxisLine(canvas, size, label.toString(), i * interval);
+    for (int i = 0; i <= nodeCount; i++) {
+      var label = (_maxVerticalAxisValue - (_verticalAxisInterval * i)).toInt();
+      _drawVerticalAxisLine(canvas, size, label.toString(), i * interval);
     }
     canvas.restore();
   }
 
   /// 绘制数轴的一行
-  void drawVerticalAxisLine(Canvas canvas, Size size, String text, double height) {
-    var tp = newVerticalAxisTextPainter(text)..layout();
+  void _drawVerticalAxisLine(Canvas canvas, Size size, String text, double height) {
+    var tp = _newVerticalAxisTextPainter(text)..layout();
 
     // 绘制虚线
     // 虚线的宽度 = 可用宽度 - 文字宽度 - 文字宽度的左右边距
     var dottedLineWidth = size.width - VERTICAL_TEXT_WIDTH;
     _levelLinePaint.color = _levelLinePaint.color.withOpacity(animatedValue.clamp(0.0, 1.0));
-    canvas.drawPath(newDottedLine(dottedLineWidth, height, DOTTED_LINE_WIDTH, DOTTED_LINE_INTERVAL),
+    canvas.drawPath(_newDottedLine(dottedLineWidth, height, DOTTED_LINE_WIDTH, DOTTED_LINE_INTERVAL),
         _levelLinePaint);
 
     // 绘制虚线右边的Text
@@ -808,8 +802,8 @@ class AltitudePainter extends CustomPainter {
     tp.paint(canvas, Offset(textLeft, height - tp.height / 2));
   }
 
-  // 生成虚线的Path
-  Path newDottedLine(double width, double y, double cutWidth, double interval) {
+  /// 生成虚线的Path
+  Path _newDottedLine(double width, double y, double cutWidth, double interval) {
     var path = Path();
     var d = width / (cutWidth + interval);
     path.moveTo(0.0, y);
@@ -825,8 +819,8 @@ class AltitudePainter extends CustomPainter {
     maxLines: 1,
   );
 
-  // 生成纵轴文字的TextPainter
-  TextPainter newVerticalAxisTextPainter(String text) {
+  /// 生成纵轴文字的TextPainter
+  TextPainter _newVerticalAxisTextPainter(String text) {
     return textPainter
       ..text = TextSpan(
         text: text,
@@ -837,40 +831,36 @@ class AltitudePainter extends CustomPainter {
       );
   }
 
-  void drawHorizontalAxis(Canvas canvas, double viewportWidth, double totalWidth) {
+  void _drawHorizontalAxis(Canvas canvas, double viewportWidth, double totalWidth) {
     Offset lastPoint = _altitudePointList?.last?.point;
     if (lastPoint == null) return;
 
     double ratio = viewportWidth / totalWidth;
-    double a = _altitudePointList.last.point.dx * ratio;
-    double interval = a / 6.0;
-    int miters;
-    if (interval >= 100.0) {
-      miters = (interval / 100.0).ceil() * 100;
-    } else if (interval >= 10) {
-      miters = (interval / 10.0).ceil() * 10;
+    double intervalAtDistance = lastPoint.dx * ratio / 6.0;
+    int intervalAtHAxis;
+    if (intervalAtDistance >= 100.0) {
+      intervalAtHAxis = (intervalAtDistance / 100.0).ceil() * 100;
+    } else if (intervalAtDistance >= 10) {
+      intervalAtHAxis = (intervalAtDistance / 10.0).ceil() * 10;
     } else {
-      miters = (interval / 5.0).ceil() * 5;
+      intervalAtHAxis = (intervalAtDistance / 5.0).ceil() * 5;
     }
-    double r = miters.toDouble() / interval;
-    double hInterval = viewportWidth / 6.0 * r;
+    double hAxisIntervalScale = intervalAtHAxis.toDouble() / intervalAtDistance;
+    double intervalAtScreen = viewportWidth / 6.0 * hAxisIntervalScale;
 
-    double count = totalWidth / hInterval;
+    double count = totalWidth / intervalAtScreen;
     for (int i = 0; i <= count; i++) {
-      drawHorizontalAxisLine(
+      _drawHorizontalAxisLine(
         canvas,
-        "${i * miters}",
-        i * hInterval,
+        "${i * intervalAtHAxis}",
+        i * intervalAtScreen,
       );
     }
   }
 
   /// 绘制数轴的一行
-  void drawHorizontalAxisLine(Canvas canvas, String text, double width) {
-    var tp = newVerticalAxisTextPainter(text)..layout();
-
-    // 绘制虚线右边的Text
-    // Text的绘制起始点 = 可用宽度 - 文字宽度 - 左边距
+  void _drawHorizontalAxisLine(Canvas canvas, String text, double width) {
+    var tp = _newVerticalAxisTextPainter(text)..layout();
     var textLeft = width + tp.width / -2;
     tp.paint(canvas, Offset(textLeft, 0.0));
   }
@@ -880,47 +870,41 @@ class AltitudePainter extends CustomPainter {
   double lastGradientTop = 0.0;
 
   /// 绘制海拔图连线部分
-  void drawLines(Canvas canvas, Size size) {
+  void _drawLines(Canvas canvas, Size size) {
     var pointList = _altitudePointList;
     if (pointList == null || pointList.isEmpty) return;
 
-    // 将原点挪到以纵坐标的0点所在的位置, 向下为负, 向上为正. 这样可以绘制出负海拔的区域
-    double maxValue = _maxVerticalAxisValue - _minVerticalAxisValue;
-    double h = size.height;
-
     double ratioX = size.width / pointList.last.point.dx;
-    double ratioY = h / maxValue;
+    double ratioY = size.height / (_maxVerticalAxisValue - _minVerticalAxisValue);
 
-    var firstPoint = pointList.first.point;
     var path = Path();
 
     var calculateDy = (double dy) {
-      return h - (dy - _minVerticalAxisValue) * ratioY * animatedValue;
+      return size.height - (dy - _minVerticalAxisValue) * ratioY * animatedValue;
     };
 
+    var firstPoint = pointList.first.point;
     path.moveTo(firstPoint.dx * ratioX, calculateDy(firstPoint.dy));
     for (var p in pointList) {
       path.lineTo(p.point.dx * ratioX, calculateDy(p.point.dy));
     }
 
     // 绘制线条下面的渐变部分
-    double gradientTop = h - ratioY * (_maxAltitude - _minAltitude) * animatedValue;
+    double gradientTop = size.height - ratioY * (_maxAltitude - _minVerticalAxisValue) * animatedValue;
     if (lastGradientTop != gradientTop) {
       lastGradientTop = gradientTop;
       _gradualPaint.shader =
           ui.Gradient.linear(Offset(0.0, gradientTop), Offset(0.0, size.height), gradientColors);
     }
-    drawGradualShadow(path, size, canvas);
+    _drawGradualShadow(path, size, canvas);
 
     // 先绘制渐变再绘制线,避免线被遮挡住
-    canvas.save();
     canvas.drawPath(path, _linePaint);
-    canvas.restore();
 
-    drawLabel(canvas, h, pointList, ratioX, ratioY);
+    _drawLabel(canvas, size.height, pointList, ratioX, ratioY);
   }
 
-  void drawGradualShadow(Path path, Size size, Canvas canvas) {
+  void _drawGradualShadow(Path path, Size size, Canvas canvas) {
     var gradualPath = Path.from(path);
     gradualPath.lineTo(gradualPath.getBounds().width, size.height);
     gradualPath.relativeLineTo(-gradualPath.getBounds().width, 0.0);
@@ -928,11 +912,11 @@ class AltitudePainter extends CustomPainter {
     canvas.drawPath(gradualPath, _gradualPaint);
   }
 
-  void drawLabel(
-      Canvas canvas, double h, List<AltitudePoint> pointList, double ratioX, double ratioY) {
+  void _drawLabel(
+      Canvas canvas, double height, List<AltitudePoint> pointList, double ratioX, double ratioY) {
     // 绘制关键点及文字
     canvas.save();
-    canvas.translate(0.0, h);
+    canvas.translate(0.0, height);
     double ratioInScaling = _scale / _maxScale * 10.0;
     for (var p in pointList) {
       if (p.name == null || p.name.isEmpty) continue;
@@ -973,7 +957,7 @@ class AltitudePainter extends CustomPainter {
       double bgTop = yInScreen + tp.height + 8;
       double bgBottom = yInScreen + 4;
       double textTop = yInScreen + tp.height + 6;
-      if (h * scale4Offset - bgTop < 0) {
+      if (height * scale4Offset - bgTop < 0) {
         bgTop = yInScreen - tp.height - 8;
         bgBottom = yInScreen - 4;
         textTop = yInScreen - 6;
@@ -1059,7 +1043,7 @@ class AltitudeThumbnailPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    drawLines(canvas, size);
+    _drawLines(canvas, size);
   }
 
   @override
@@ -1075,7 +1059,7 @@ class AltitudeThumbnailPainter extends CustomPainter {
   /// =========== 绘制海拔图连线部分
 
   /// 绘制海拔图连线部分
-  void drawLines(Canvas canvas, Size size) {
+  void _drawLines(Canvas canvas, Size size) {
     var pointList = _altitudePointList;
     if (pointList == null || pointList.isEmpty) return;
 
@@ -1094,7 +1078,7 @@ class AltitudeThumbnailPainter extends CustomPainter {
     }
 
     // 绘制线条下面的渐变部分
-    drawGradualShadow(path, size, canvas);
+    _drawGradualShadow(path, size, canvas);
 
     // 先绘制渐变再绘制线,避免线被遮挡住
     canvas.save();
@@ -1103,7 +1087,7 @@ class AltitudeThumbnailPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void drawGradualShadow(Path path, Size size, Canvas canvas) {
+  void _drawGradualShadow(Path path, Size size, Canvas canvas) {
     var gradualPath = Path();
     gradualPath.addPath(path, Offset.zero);
     gradualPath.lineTo(gradualPath.getBounds().width, size.height);
