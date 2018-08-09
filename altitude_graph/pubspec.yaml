@@ -1,7 +1,7 @@
 name: altitude_graph
 description: A widget to display an altitude graph.
-version: 0.0.1
-author: WosLovesLife <zhang00h00@126.com>
+version: 1.0.0
+author: WosLovesLife <zhang599926@gmail.com>
 homepage: https://github.com/WosLovesLife/flutter_altitude_graph
 
 environment:
