@@ -8,7 +8,7 @@ A pure Flutter widget to display and interact with an altitude graph.
 - Provides scaling and scrolling operations with smooth performance
 - You can scale, drag on the graph by fingers, and beside of this I also provided a sliding bar on the bottom of the widget that can be scaling and scrolling more easier
 
-![altitude graph](../screenshots/altitude_graph_intro.gif)
+![altitude graph](./screenshots/altitude_graph_intro.gif)
 
 ## Getting Started
 
