@@ -713,6 +713,8 @@ class AltitudePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (_altitudePointList?.isEmpty ?? true) return;
+
     // 30 是给上下留出的距离, 这样竖轴的最顶端的字就不会被截断, 下方可以用来显示横轴的字
     Size availableSize = Size(size.width, size.height - 30.0);
 
